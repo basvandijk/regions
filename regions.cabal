@@ -1,0 +1,68 @@
+name:          regions
+version:       0.1
+cabal-version: >=1.6
+build-type:    Simple
+license:       BSD3
+license-file:  LICENSE
+copyright:     2009 Bas van Dijk
+author:        Bas van Dijk
+maintainer:    Bas van Dijk <v.dijk.bas@gmail.com>
+stability:     experimental
+category:
+synopsis:      Provides the region monad for safely opening and working with
+               scarce resources.
+description:
+
+  This package provides the region monad transformer. Scarce resources like
+  files, memory pointers or USB devices for example can be opened in a
+  region. When the region terminates, all opened resources will be automatically
+  closed. The main advantage of regions is that the opened resources can not be
+  returned from the region which ensures no I/O with closed resources is
+  possible.
+
+  .
+
+  The primary technique used in this package is called \"Lightweight monadic
+  regions\" which was invented by Oleg Kiselyov and Chung-chieh Shan.  See:
+
+  .
+
+  <http://okmij.org/ftp/Haskell/regions.html#light-weight>
+
+  .
+
+  This package provides two modules:
+
+  .
+
+  * @Control.Monad.Trans.Region.Internal@ should only be used by library authors
+    wishing to allow their users to open their type of resources in a region. It
+    should not be used by end-users directly!
+
+  .
+
+  * @Control.Monad.Trans.Region@ provides the public and safe interface to
+    regions which can be used by end-users.
+
+  .
+
+  Also see the @regions-monadsfd@ and @regions-monadstf@ packages which provide
+  instances for the classes in the respected monads packages.
+
+  .
+
+  For an example of how to use this library see the @usb-safe@ package.
+
+source-repository head
+  Type:     darcs
+  Location: http://code.haskell.org/~basvandijk/code/regions
+
+Library
+  GHC-Options: -O2 -Wall
+  build-depends: base                      >= 4 && < 4.2
+               , unicode-symbols           == 0.1.*
+               , transformers              >= 0.1.4 && < 0.2
+               , MonadCatchIO-transformers == 0.0.2.*
+               , monads-fd                 == 0.0.*
+  exposed-modules: Control.Monad.Trans.Region
+                 , Control.Monad.Trans.Region.Internal
