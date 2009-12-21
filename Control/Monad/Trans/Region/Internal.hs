@@ -31,7 +31,7 @@
 -- of resource.
 --
 -- Make sure not to re-export anything from this module. Either re-export things
--- from @Control.Monad.Trans.Region@ or tell your user to import that module
+-- from @Control.Monad.Trans.Region@ or tell your users to import that module
 -- directly.
 --
 --------------------------------------------------------------------------------
