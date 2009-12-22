@@ -274,7 +274,7 @@ forkTopRegion m = RegionT $ do
               block $ do
                 -- Increment the reference count of each opened resource so that
                 -- when the current region terminates the resources will stay
-                -- opened in the next to be created thread:
+                -- open in the to be created thread:
                 mapM_ (increment ∘ refCntIORef) openedResources
 
                 -- Fork a new thread that will concurrently run the given region
@@ -464,7 +464,7 @@ class Resource resource ⇒ Dup α resource where
 instance Resource resource ⇒ Dup (RegionalHandle resource) resource where
     dup (RegionalHandle openedResource) = block $ do
       -- Increment the reference count of the given opened resource so that it
-      -- won't get closed in the current region:
+      -- won't get closed when the current region terminates:
       liftIO $ increment $ refCntIORef openedResource
 
       -- The following registers the opened resource in the parent region so
