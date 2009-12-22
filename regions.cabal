@@ -59,7 +59,7 @@ source-repository head
 
 Library
   GHC-Options: -O2 -Wall
-  build-depends: base                      >= 4 && < 4.2
+  build-depends: base                      >= 4 && < 4.3
                , base-unicode-symbols      == 0.1.*
                , transformers              >= 0.1.4 && < 0.2
                , MonadCatchIO-transformers == 0.0.2.*
