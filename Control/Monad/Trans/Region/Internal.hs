@@ -1,4 +1,5 @@
 {-# LANGUAGE UnicodeSyntax #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -80,11 +81,11 @@ module Control.Monad.Trans.Region.Internal
 --------------------------------------------------------------------------------
 
 -- from base:
-import Prelude             ( succ, pred )
+import Prelude             ( succ, pred, fromInteger )
 import Control.Concurrent  ( forkIO, ThreadId )
 import Control.Applicative ( Applicative, Alternative )
-import Control.Monad       ( Monad, return, (>>=)
-                           , when, liftM2, mapM_
+import Control.Monad       ( Monad, return, (>>=), fail
+                           , (>>), when, liftM2, mapM_
                            , Functor
                            , MonadPlus
                            )
