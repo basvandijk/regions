@@ -107,8 +107,9 @@ import           Control.Monad.Trans.Reader ( ReaderT
                                             , ask
                                             , runReaderT, mapReaderT
                                             )
--- from unicode-symbols:
-import Prelude.Unicode ( (∘), (≡) )
+-- from base-unicode-symbols:
+import Data.Eq.Unicode       ( (≡) )
+import Data.Function.Unicode ( (∘) )
 
 
 --------------------------------------------------------------------------------
