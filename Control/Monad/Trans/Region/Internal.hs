@@ -437,7 +437,7 @@ Now in this child region you open the resource @r1@:
 where @cs@ is bound by the inner (child) @runRegionT@ and @ps@ is
 bound by the outer (parent) @runRegionT@.
 
-Suppose you want to use the resulting regional handle @r1h@ in the /parent/ device
+Suppose you want to use the resulting regional handle @r1h@ in the /parent/
 region. You can't simply @return r1h@ because then the type variable @cs@,
 escapes the inner region.
 
