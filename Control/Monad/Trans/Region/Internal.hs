@@ -156,9 +156,9 @@ newtype RegionT resource s (pr ∷ * → *) α = RegionT
              , MonadCatchIO
              )
 
-{-| An @Opened resource@ is an internal data type which associates a handle to
-the resource with a reference count. Handles are reference counted because they
-may be /duplicated/ to a parent region using 'dup'.
+{-| An @Opened resource@ is an internally used data type which associates a
+handle to the resource with a reference count. Handles are reference counted
+because they may be /duplicated/ to a parent region using 'dup'.
 
 The reference count is:
 
@@ -175,16 +175,17 @@ data Opened resource = Opened { openedHandle ∷ Handle resource
                               , refCntIORef  ∷ IORef Int
                               }
 
--- | Internal function that atomically decrements the reference count that is
--- stored in the given @IORef@. The function returns the decremented reference
--- count.
+{-| Internally used function that atomically decrements the reference count that
+is stored in the given @IORef@. The function returns the decremented reference
+count.
+-}
 decrement ∷ IORef Int → IO Int
 decrement ioRef = atomicModifyIORef ioRef $ \refCnt →
                   let predRefCnt = pred refCnt
                   in (predRefCnt, predRefCnt)
 
--- | Internal function that atomically increments the reference count that is
--- stored in the given @IORef@.
+-- | Internally used function that atomically increments the reference count that
+-- is stored in the given @IORef@.
 increment ∷ IORef Int → IO ()
 increment ioRef = atomicModifyIORef ioRef $ \refCnt →
                   (succ refCnt, ())
@@ -289,8 +290,8 @@ forkTopRegion m = RegionT $ do
                 -- count will never reach 0!)
                 forkIO $ runRegionWith openedResources m
 
--- | Internal function that actually runs the region on the given list of opened
--- resources.
+-- | Internally used function that actually runs the region on the given list of
+-- opened resources.
 runRegionWith ∷ ∀ resource s pr α.
                 (MonadCatchIO pr, Resource resource)
               ⇒ [Opened resource]
@@ -394,8 +395,8 @@ with ∷ (Resource resource, MonadCatchIO pr)
             --   resulting regional handle.
 with resource f = runRegionT $ open resource >>= f
 
--- | Internal function to /register/ the given opened resource by consing it to
--- the list of opened resources of the region.
+-- | Internally used function to /register/ the given opened resource by consing
+-- it to the list of opened resources of the region.
 register ∷ (Resource resource, MonadIO pr)
          ⇒ Opened resource
          → RegionT resource s pr ()
