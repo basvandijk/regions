@@ -459,8 +459,8 @@ class Resource resource ⇒ Dup α resource where
           -- ^ Something created in a child region.
         → RegionT resource cs (RegionT resource ps ppr)
               (α (RegionT resource ps ppr))
-          -- ^ The child region which returns the thing which can now be used in
-          --   the parent region.
+          -- The child region which returns the thing which can now be used in
+          -- the parent region.
 
 instance Resource resource ⇒ Dup (RegionalHandle resource) resource where
     dup (RegionalHandle openedResource) = block $ do
