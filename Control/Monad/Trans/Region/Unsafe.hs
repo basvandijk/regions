@@ -15,7 +15,7 @@
 
 -------------------------------------------------------------------------------
 -- |
--- Module      :  Control.Monad.Trans.Region.Internal
+-- Module      :  Control.Monad.Trans.Region.Unsafe
 -- Copyright   :  (c) 2009 Bas van Dijk
 -- License     :  BSD3 (see the file LICENSE)
 -- Maintainer  :  Bas van Dijk <v.dijk.bas@gmail.com>
@@ -39,7 +39,7 @@
 --
 --------------------------------------------------------------------------------
 
-module Control.Monad.Trans.Region.Internal
+module Control.Monad.Trans.Region.Unsafe
     ( -- * Scarce resources
       Resource
     , Handle

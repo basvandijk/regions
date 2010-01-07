@@ -34,4 +34,4 @@ module Control.Monad.Trans.Region
     , dup
     ) where
 
-import Control.Monad.Trans.Region.Internal
+import Control.Monad.Trans.Region.Unsafe
