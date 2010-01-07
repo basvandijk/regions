@@ -32,6 +32,11 @@ module Control.Monad.Trans.Region
 
       -- * Duplication
     , dup
+
+      -- * Handy functions for writing monadic instances
+    , mapRegionT
+    , liftCatch
+      -- | /TODO: define and export: /@liftCallCC@
     ) where
 
-import Control.Monad.Trans.Region.Unsafe
+import Control.Monad.Trans.Region.Internal
