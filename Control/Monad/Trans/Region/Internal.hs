@@ -11,6 +11,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE ExistentialQuantification #-}
 
 -------------------------------------------------------------------------------
 -- |
@@ -85,7 +86,7 @@ import Prelude             ( succ, pred, fromInteger )
 import Control.Concurrent  ( forkIO, ThreadId )
 import Control.Applicative ( Applicative, Alternative )
 import Control.Monad       ( Monad, return, (>>=), fail
-                           , (>>), when, liftM2, mapM_
+                           , (>>), when, liftM2, mapM_, forM_
                            , Functor
                            , MonadPlus
                            )
@@ -135,15 +136,15 @@ class Resource resource where
 -- * Regions
 --------------------------------------------------------------------------------
 
-{-| A monad transformer in which resources of type @resource@ can be opened
+{-| A monad transformer in which scarce resources can be opened
 which are automatically closed when the region terminates.
 
 Note that regions can be nested. @pr@ (for parent region) is a monad which is
 usually the region which is running this region. However when you are running a
 'TopRegion' the parent region will be 'IO'.
 -}
-newtype RegionT resource s (pr ∷ * → *) α = RegionT
-    { unRegionT :: ReaderT (IORef [Opened resource]) pr α }
+newtype RegionT s (pr ∷ * → *) α = RegionT
+    { unRegionT ∷ ReaderT (IORef [SomeOpenedResource]) pr α }
 
     deriving ( Functor
              , Applicative
@@ -155,6 +156,15 @@ newtype RegionT resource s (pr ∷ * → *) α = RegionT
              , MonadIO
              , MonadCatchIO
              )
+
+-- | An internally used datatype which adds an existential wrapper around
+-- 'OpenedResource' to hide the @resource@ type. If the @resource@ type is not
+-- hidden, regions must be parameterized by it. This is undesirable because then
+-- only one type of resource can be opened in a region. The following allows all
+-- kinds of resources to be opened in a single region as long as they have an
+-- instance for 'Resource'.
+data SomeOpenedResource = ∀ resource. Resource resource
+                        ⇒ Some (Opened resource)
 
 {-| An @Opened resource@ is an internally used data type which associates a
 handle to the resource with a reference count. Handles are reference counted
@@ -217,10 +227,7 @@ never do any IO with a closed regional handle.
 
 Note that it is possible to run a region inside another region.
 -}
-runRegionT ∷ (Resource resource, MonadCatchIO pr)
-           ⇒ (∀ s. RegionT resource s pr α) -- ^ Region you wish to execute.
-           → pr α -- ^ Computation in the parent region which executes the given
-                  --   region.
+runRegionT ∷ MonadCatchIO pr ⇒ (∀ s. RegionT s pr α) → pr α
 runRegionT m = runRegionWith [] m
 
 {-| A region which has 'IO' as its parent region which enables it to be:
@@ -229,16 +236,13 @@ runRegionT m = runRegionWith [] m
 
  * concurrently executed in a new thread by 'forkTopRegion'.
 -}
-type TopRegion resource s = RegionT resource s IO
+type TopRegion s = RegionT s IO
 
 {-| Convenience funtion for running a /top-level/ region in 'IO'.
 
 Note that: @runTopRegion = 'runRegionT'@
 -}
-runTopRegion ∷ Resource resource
-             ⇒ (∀ s. TopRegion resource s α)
-                    -- ^ /Top-level/ region you wish to execute.
-             → IO α -- ^ An @IO@ computation which executes the given region.
+runTopRegion ∷ (∀ s. TopRegion s α) → IO α
 runTopRegion = runRegionT
 
 {-| Return a region which executes the given /top-level/ region in a new thread.
@@ -261,12 +265,7 @@ Note that the @regionalHndl@ and all other resources opened in the current
 thread are closed only when the current thread or the forked thread terminates
 whichever comes /last/.
 -}
-forkTopRegion ∷ (Resource resource, MonadIO pr)
-              ⇒ TopRegion resource s () -- ^ /Top-level/ region you wish to
-                                        --   execute in a new thread.
-              → RegionT resource s pr ThreadId
-                -- ^ A regional computation that executes the given region in a
-                --   new thread and returns the @ThreadId@ of this new thread.
+forkTopRegion ∷ MonadIO pr ⇒ TopRegion s () → RegionT s pr ThreadId
 forkTopRegion m = RegionT $ do
   -- Get the list of currently opened resources in this region:
   openedResourcesIORef ← ask
@@ -276,7 +275,8 @@ forkTopRegion m = RegionT $ do
                 -- Increment the reference count of each opened resource so that
                 -- when the current region terminates the resources will stay
                 -- open in the to be created thread:
-                mapM_ (increment ∘ refCntIORef) openedResources
+                forM_ openedResources $ \(Some openedResource) →
+                  increment $ refCntIORef $ openedResource
 
                 -- Fork a new thread that will concurrently run the given region
                 -- on the opened resources of the current region:
@@ -292,10 +292,9 @@ forkTopRegion m = RegionT $ do
 
 -- | Internally used function that actually runs the region on the given list of
 -- opened resources.
-runRegionWith ∷ ∀ resource s pr α.
-                (MonadCatchIO pr, Resource resource)
-              ⇒ [Opened resource]
-              → RegionT resource s pr α
+runRegionWith ∷ ∀ s pr α. MonadCatchIO pr
+              ⇒ [SomeOpenedResource]
+              → RegionT s pr α
               → pr α
 runRegionWith openedResources m =
     bracket
@@ -311,7 +310,7 @@ runRegionWith openedResources m =
 
       (runReaderT $ unRegionT m)
     where
-      end (Opened {openedHandle, refCntIORef}) = do
+      end (Some (Opened {openedHandle, refCntIORef})) = do
         refCnt ← decrement refCntIORef
         when (refCnt ≡ 0) $ closeResource openedHandle
 
@@ -354,11 +353,9 @@ Note that if you /do/ wish to return a regional handle from the region in which
 it was created you have to /duplicate/ the handle by applying 'dup' to it.
 -}
 open ∷ (Resource resource, MonadCatchIO pr)
-     ⇒ resource -- ^ The resource you wish to open.
-     → RegionT resource s pr
-         (RegionalHandle resource (RegionT resource s pr))
-         -- ^ A regional computation that returns a regional handle to the given
-         --   opened resource parameterized by the region itself.
+     ⇒ resource
+     → RegionT s pr
+         (RegionalHandle resource (RegionT s pr))
 open resource = block $ do
   -- Create a new opened resource by actually opening the resource and
   -- intializing the reference count to 1:
@@ -386,23 +383,17 @@ region.
 Note that: @with dev f = @'runRegionT'@ (@'open'@ dev @'>>='@ f)@
 -}
 with ∷ (Resource resource, MonadCatchIO pr)
-     ⇒ resource -- ^ The resource you wish to open.
-     → (∀ s. RegionalHandle resource (RegionT resource s pr)
-           → RegionT resource s pr α
-       ) -- ^ Continuation function.
-     → pr α -- ^ A computation which runs a child region which opens the given
-            --   resource and applies the given continuation function to the
-            --   resulting regional handle.
+     ⇒ resource
+     → (∀ s. RegionalHandle resource (RegionT s pr) → RegionT s pr α)
+     → pr α
 with resource f = runRegionT $ open resource >>= f
 
 -- | Internally used function to /register/ the given opened resource by consing
 -- it to the list of opened resources of the region.
-register ∷ (Resource resource, MonadIO pr)
-         ⇒ Opened resource
-         → RegionT resource s pr ()
+register ∷ (Resource resource, MonadIO pr) ⇒ Opened resource → RegionT s pr ()
 register openedResource = RegionT $ do
   openedResourcesIORef ← ask
-  liftIO $ modifyIORef openedResourcesIORef (openedResource:)
+  liftIO $ modifyIORef openedResourcesIORef (Some openedResource:)
 
 
 --------------------------------------------------------------------------------
@@ -453,16 +444,15 @@ Note that @r1hDup :: RegionalHandle resource (RegionT resource ps ppr)@
 
 Back in the parent region you can safely operate on @r1hDup@.
 -}
-class Resource resource ⇒ Dup α resource where
-    dup ∷ (MonadCatchIO ppr)
-        ⇒ α (RegionT resource cs (RegionT resource ps ppr))
-          -- ^ Something created in a child region.
-        → RegionT resource cs (RegionT resource ps ppr)
-              (α (RegionT resource ps ppr))
+class Dup α where
+    dup ∷ MonadCatchIO ppr
+        ⇒ α (RegionT cs (RegionT ps ppr))
+        → RegionT cs (RegionT ps ppr)
+              (α (RegionT ps ppr))
           -- The child region which returns the thing which can now be used in
           -- the parent region.
 
-instance Resource resource ⇒ Dup (RegionalHandle resource) resource where
+instance Resource resource ⇒ Dup (RegionalHandle resource) where
     dup (RegionalHandle openedResource) = block $ do
       -- Increment the reference count of the given opened resource so that it
       -- won't get closed when the current region terminates:
@@ -496,14 +486,14 @@ instance Resource resource ⇒ Dup (RegionalHandle resource) resource where
 -- liftCallCC callCC f = RegionT $ ???
 
 -- | Transform the computation inside a region.
-mapRegionT ∷ (m α → n β) → RegionT resource s m α → RegionT resource s n β
+mapRegionT ∷ (m α → n β) → RegionT s m α → RegionT s n β
 mapRegionT f = RegionT ∘ mapReaderT f ∘ unRegionT
 
 -- | Lift a 'catchError' operation to the new monad.
-liftCatch ∷ (pr α → (e → pr α) → pr α)    -- ^ @catch@ on the argument monad.
-          → RegionT resource s pr α       -- ^ Computation to attempt.
-          → (e → RegionT resource s pr α) -- ^ Exception handler.
-          → RegionT resource s pr α
+liftCatch ∷ (pr α → (e → pr α) → pr α) -- ^ @catch@ on the argument monad.
+          → RegionT s pr α             -- ^ Computation to attempt.
+          → (e → RegionT s pr α)       -- ^ Exception handler.
+          → RegionT s pr α
 liftCatch f m h = RegionT $ Reader.liftCatch f (unRegionT m) (unRegionT ∘ h)
 
 
@@ -516,16 +506,16 @@ liftCatch f m h = RegionT $ Reader.liftCatch f (unRegionT m) (unRegionT ∘ h)
 A region is the parent of another region if they're either equivalent like:
 
 @
-RegionT resource ps pr  \`ParentOf\`  RegionT resource ps pr
+RegionT ps pr  \`ParentOf\`  RegionT ps pr
 @
 
 or if it is the parent of the parent of the child like:
 
 @
-RegionT resource ps ppr \`ParentOf\` RegionT resource cs
-                                     (RegionT resource pcs
-                                       (RegionT resource ppcs
-                                         (RegionT resource ps ppr)))
+RegionT ps ppr \`ParentOf\` RegionT cs
+                              (RegionT pcs
+                                (RegionT ppcs
+                                  (RegionT ps ppr)))
 @
 -}
 class (Monad pr, Monad cr) ⇒ pr `ParentOf` cr
@@ -533,7 +523,7 @@ class (Monad pr, Monad cr) ⇒ pr `ParentOf` cr
 instance Monad r ⇒ ParentOf r r
 
 instance ( Monad cr
-         , cr `TypeCast2` RegionT resource s pcr
+         , cr `TypeCast2` RegionT s pcr
          , pr `ParentOf` pcr
          )
          ⇒ ParentOf pr cr
