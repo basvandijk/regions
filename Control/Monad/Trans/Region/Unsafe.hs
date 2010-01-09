@@ -13,9 +13,9 @@
 -- This module should /only/ be used by library authors wishing to allow their
 -- end-users to open their resources in a region.
 --
--- The only thing to do, to create a module or library that allows your users to
--- open your resources in a region, is to define an instance for 'Resource' for
--- your type of resource.
+-- To create a module or library that allows your users to open your resources
+-- in a region, the only thing you have to do is to define an instance for
+-- 'Resource' for your type of resource.
 --
 -- Make sure not to re-export anything from this module. Either re-export things
 -- from @Control.Monad.Trans.Region@ or tell your users to import that module
@@ -29,16 +29,7 @@ module Control.Monad.Trans.Region.Unsafe
     , Handle
     , openResource
     , closeResource
-
-      -- * Accessing the internal handle of a resource.
     , internalHandle
-
-      -- * Duplication
-    , Dup
-    , dup
-
-      -- * Parent/child relationship between regions.
-    , ParentOf
     ) where
 
 import Control.Monad.Trans.Region.Internal

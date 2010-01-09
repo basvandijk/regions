@@ -31,7 +31,11 @@ module Control.Monad.Trans.Region
     , with
 
       -- * Duplication
+    , Dup
     , dup
+
+      -- * Parent/child relationship between regions.
+    , ParentOf
 
       -- * Handy functions for writing monadic instances
     , mapRegionT
