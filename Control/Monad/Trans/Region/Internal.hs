@@ -382,7 +382,7 @@ open resource = block $ do
 continuation function to the resulting regional handle and runs the resulting
 region.
 
-Note that: @with dev f = @'runRegionT'@ (@'open'@ dev @'>>='@ f)@
+Note that: @with resource f = @'runRegionT'@ (@'open'@ resource @'>>='@ f)@
 -}
 with ∷ (Resource resource, MonadCatchIO pr)
      ⇒ resource
