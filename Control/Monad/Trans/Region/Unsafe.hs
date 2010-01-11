@@ -27,9 +27,12 @@ module Control.Monad.Trans.Region.Unsafe
     ( -- * Scarce resources
       Resource
     , Handle
+
     , openResource
     , closeResource
+
     , internalHandle
+    , mapInternalHandle
     ) where
 
 import Control.Monad.Trans.Region.Internal

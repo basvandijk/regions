@@ -12,6 +12,7 @@
 {-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -------------------------------------------------------------------------------
 -- |
@@ -49,9 +50,11 @@ module Control.Monad.Trans.Region.Internal
 
       -- * Opening resources
     , RegionalHandle
-    , internalHandle
-    , open
 
+    , internalHandle
+    , mapInternalHandle
+
+    , open
     , with
 
       -- * Duplication
@@ -333,6 +336,13 @@ resetDevice (internalHandle -> (DeviceHandle ...)) = ...
 -}
 internalHandle ∷ RegionalHandle resource r → Handle resource
 internalHandle = openedHandle ∘ unRegionalHandle
+
+-- | Modify the internal handle from the given regional handle.
+mapInternalHandle ∷ (Handle resource1 → Handle resource2)
+                  → (RegionalHandle resource1 r → RegionalHandle resource2 r)
+mapInternalHandle f (unRegionalHandle → openedResource) =
+    RegionalHandle $ openedResource
+                       { openedHandle = f $ openedHandle openedResource }
 
 {-| Open the given resource in a region yielding a regional handle to it.
 
