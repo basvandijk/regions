@@ -1,18 +1,19 @@
-{-# LANGUAGE UnicodeSyntax #-}
-{-# LANGUAGE NoImplicitPrelude #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverlappingInstances #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE UnicodeSyntax
+           , NoImplicitPrelude
+           , GeneralizedNewtypeDeriving
+           , RankNTypes
+           , ScopedTypeVariables
+           , KindSignatures
+           , TypeFamilies
+           , MultiParamTypeClasses
+           , FunctionalDependencies
+           , UndecidableInstances
+           , FlexibleInstances
+           , OverlappingInstances
+           , NamedFieldPuns
+           , ExistentialQuantification
+           , ViewPatterns
+  #-}
 
 -------------------------------------------------------------------------------
 -- |
