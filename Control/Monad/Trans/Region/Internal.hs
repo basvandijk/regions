@@ -47,6 +47,7 @@ module Control.Monad.Trans.Region.Internal
 
     , TopRegion
     , runTopRegion
+
     , forkTopRegion
 
       -- * Opening resources
@@ -139,7 +140,7 @@ usually the region which is running this region. However when you are running a
 'TopRegion' the parent region will be 'IO'.
 -}
 newtype RegionT s (pr ∷ * → *) α = RegionT
-    { unRegionT ∷ ReaderT (IORef [SomeOpenedResource]) pr α }
+    { unRegionT ∷ ReaderT (IORef [AnyRegionalHandle]) pr α }
 
     deriving ( Functor
              , Applicative
@@ -152,33 +153,61 @@ newtype RegionT s (pr ∷ * → *) α = RegionT
              , MonadCatchIO
              )
 
--- | An internally used datatype which adds an existential wrapper around
--- 'OpenedResource' to hide the @resource@ type. If the @resource@ type is not
--- hidden, regions must be parameterized by it. This is undesirable because then
--- only one type of resource can be opened in a region. The following allows all
--- kinds of resources to be opened in a single region as long as they have an
--- instance for 'Resource'.
-data SomeOpenedResource = ∀ resource. Resource resource
-                        ⇒ Some (Opened resource)
+-- | An internally used datatype which adds an existential wrapper around a
+-- 'RegionalHandle' to hide the @resource@ type.
+--
+-- If the @resource@ type is not hidden, regions must be parameterized by
+-- it. This is undesirable because then only one type of resource can be opened
+-- in a region. The following allows all types of resources to be opened in a
+-- single region as long as they have an instance for 'Resource'.
+data AnyRegionalHandle = ∀ resource (r ∷ * → *). Resource resource
+                       ⇒ Any (RegionalHandle resource r)
 
-{-| An @Opened resource@ is an internally used data type which associates a
-handle to the resource with a reference count. Handles are reference counted
-because they may be /duplicated/ to a parent region using 'dup'.
+-- | A handle to an opened resource parameterized by the @resource@ and the
+-- region @r@ in which it was created.
+data RegionalHandle resource (r ∷ * → *) = RegionalHandle
+    { {-| Get the internal handle from the given regional handle.
 
-The reference count is:
+      /Warning:/ This function should not be exported to or used by end-users
+      because it allows them to close the handle manually, which will defeat the
+      safety-guarantees that this package provides!
 
- * Initialized at 1 in 'open'.
+      /Tip:/ If you enable the @ViewPatterns@ language extension you can use
+      @internalHandle@ as a view-pattern as in the following example from the
+      @usb-safe@ package:
 
- * Incremented in 'dup'.
+      @
+      resetDevice :: (pr \`ParentOf\` cr, MonadIO cr)
+                  -> RegionalHandle USB.Device pr -> cr ()
+      resetDevice (internalHandle -> (DeviceHandle ...)) = ...
+      @
+      -}
+      internalHandle ∷ Handle resource
 
- * Decremented on termination of 'runRegionWith'
-   (which is called by 'runRegionT' and 'forkTopRegion').
+      {-| Get the reference count from the given regional handle.
 
-Only when the reference count reaches 0 will the resource actually be closed.
--}
-data Opened resource = Opened { openedHandle ∷ Handle resource
-                              , refCntIORef  ∷ IORef Int
-                              }
+      Handles are reference counted because they may be /duplicated/
+      to a parent region using 'dup'.
+
+      The reference count is:
+
+       * Initialized at 1 in 'open'.
+
+       * Incremented in 'dup'.
+
+       * Decremented on termination of 'runRegionWith'
+         (which is called by 'runRegionT' and 'forkTopRegion').
+
+      Only when the reference count reaches 0 will the resource actually be
+      closed.
+      -}
+    , refCntIORef ∷ IORef Int
+    }
+
+-- | Modify the internal handle from the given regional handle.
+mapInternalHandle ∷ (Handle resource1 → Handle resource2)
+                  → (RegionalHandle resource1 r → RegionalHandle resource2 r)
+mapInternalHandle f rh = rh { internalHandle = f $ internalHandle rh }
 
 {-| Internally used function that atomically decrements the reference count that
 is stored in the given @IORef@. The function returns the decremented reference
@@ -262,88 +291,54 @@ whichever comes /last/.
 -}
 forkTopRegion ∷ MonadIO pr ⇒ TopRegion s () → RegionT s pr ThreadId
 forkTopRegion m = RegionT $ do
-  -- Get the list of currently opened resources in this region:
-  openedResourcesIORef ← ask
-  liftIO $ do openedResources ← readIORef openedResourcesIORef
+  anyRegionalHandlesIORef ← ask
+  liftIO $ do
+    anyRegionalHandles ← readIORef anyRegionalHandlesIORef
+    block $ do
+      -- Increment the reference count of each opened resource so that
+      -- when the current region terminates the resources will stay
+      -- open in the, to be created, thread:
+      forM_ anyRegionalHandles $ \(Any (RegionalHandle {refCntIORef})) →
+        increment refCntIORef
 
-              block $ do
-                -- Increment the reference count of each opened resource so that
-                -- when the current region terminates the resources will stay
-                -- open in the to be created thread:
-                forM_ openedResources $ \(Some openedResource) →
-                  increment $ refCntIORef $ openedResource
+      -- Fork a new thread that will concurrently run the given region
+      -- on the opened resources of the current region:
 
-                -- Fork a new thread that will concurrently run the given region
-                -- on the opened resources of the current region:
-
-                -- (Note that if asynchronous exceptions weren't blocked and an
-                -- exception is asynchronously thrown to this thread at this
-                -- point after incrementing the opened resource's reference
-                -- count but before forking of a new thread that will run the
-                -- given region on the opened resources, all the opened
-                -- resources will never get closed, because their reference
-                -- count will never reach 0!)
-                forkIO $ runRegionWith openedResources m
+      -- (Note that if asynchronous exceptions weren't blocked and an
+      -- exception is asynchronously thrown to this thread at this
+      -- point after incrementing the opened resource's reference
+      -- count but before forking of a new thread that will run the
+      -- given region on the opened resources, all the opened
+      -- resources will never get closed, because their reference
+      -- count will never reach 0!)
+      forkIO $ runRegionWith anyRegionalHandles m
 
 -- | Internally used function that actually runs the region on the given list of
 -- opened resources.
 runRegionWith ∷ ∀ s pr α. MonadCatchIO pr
-              ⇒ [SomeOpenedResource]
-              → RegionT s pr α
-              → pr α
-runRegionWith openedResources m =
+              ⇒ [AnyRegionalHandle] → RegionT s pr α → pr α
+runRegionWith anyRegionalHandles m =
     bracket
       -- Create a new IORef containing the initial opened resources:
-      (liftIO $ newIORef openedResources)
+      (liftIO $ newIORef anyRegionalHandles)
 
       -- When the computation terminates the IORef contains a list of all
       -- resources which have been opened or duplicated to this region. We
       -- should decrement the reference count of each opened resource and
       -- actually close the resource when it reaches 0:
-      (\openedResourcesIORef → liftIO
-                             $ readIORef openedResourcesIORef >>= mapM_ end)
+      (\anyRegionalHandlesIORef → liftIO
+                                $ readIORef anyRegionalHandlesIORef >>= mapM_ end)
 
       (runReaderT $ unRegionT m)
     where
-      end (Some (Opened {openedHandle, refCntIORef})) = do
+      end (Any (RegionalHandle {internalHandle, refCntIORef})) = do
         refCnt ← decrement refCntIORef
-        when (refCnt ≡ 0) $ closeResource openedHandle
+        when (refCnt ≡ 0) $ closeResource internalHandle
 
 
 --------------------------------------------------------------------------------
 -- * Opening resources
 --------------------------------------------------------------------------------
-
--- | A handle to an opened resource parameterized by the @resource@ and the
--- region @r@ in which it was created.
-newtype RegionalHandle resource (r ∷ * → *) = RegionalHandle
-    { unRegionalHandle ∷ Opened resource }
-
-{-| Get the internal handle from the regional handle.
-
-/Warning:/ This function should not be exported to or used by end-users because
-it allows them to close the handle manually, which will defeat the
-safety-guarantees that this package provides!
-
-/Tip:/ If you enable the @ViewPatterns@ language extension you can use
-@internalHandle@ as a view-pattern as in the following example from the
-@usb-safe@ package:
-
-@
-resetDevice :: (pr \`ParentOf\` cr, MonadIO cr)
-            -> RegionalHandle USB.Device pr -> cr ()
-resetDevice (internalHandle -> (DeviceHandle ...)) = ...
-@
--}
-internalHandle ∷ RegionalHandle resource r → Handle resource
-internalHandle = openedHandle ∘ unRegionalHandle
-
--- | Modify the internal handle from the given regional handle.
-mapInternalHandle ∷ (Handle resource1 → Handle resource2)
-                  → (RegionalHandle resource1 r → RegionalHandle resource2 r)
-mapInternalHandle f (unRegionalHandle → openedResource) =
-    RegionalHandle $ openedResource
-                       { openedHandle = f $ openedHandle openedResource }
 
 {-| Open the given resource in a region yielding a regional handle to it.
 
@@ -360,10 +355,10 @@ open ∷ (Resource resource, MonadCatchIO pr)
      → RegionT s pr
          (RegionalHandle resource (RegionT s pr))
 open resource = block $ do
-  -- Create a new opened resource by actually opening the resource and
+  -- Create a new regional handle by actually opening the resource and
   -- intializing the reference count to 1:
-  openedResource ← liftIO $ liftM2 Opened (openResource resource)
-                                          (newIORef 1)
+  regionalHandle ← liftIO $ liftM2 RegionalHandle (openResource resource)
+                                                  (newIORef 1)
 
   -- The following registers the just opened resource so that it will get closed
   -- eventually:
@@ -373,17 +368,17 @@ open resource = block $ do
   -- resource and initializing its reference count to 1 but before registering
   -- the resource, the opened resource will never get closed, because its
   -- reference count will never reach 0!)
-  register openedResource
+  register regionalHandle
 
-  -- Return a regional handle containing the just opened resource. The type of
-  -- the regional handle will be parameterized by this region:
-  return $ RegionalHandle openedResource
+  -- Return the regional handle of which the type will be parameterized by this
+  -- region:
+  return regionalHandle
 
 {-| A convenience function which opens the given resource, applies the given
 continuation function to the resulting regional handle and runs the resulting
 region.
 
-Note that: @with resource f = @'runRegionT'@ (@'open'@ resource @'>>='@ f)@
+Note that: @with resource f = 'runRegionT' ('open' resource '>>=' f)@.
 -}
 with ∷ (Resource resource, MonadCatchIO pr)
      ⇒ resource
@@ -391,12 +386,14 @@ with ∷ (Resource resource, MonadCatchIO pr)
      → pr α
 with resource f = runRegionT $ open resource >>= f
 
--- | Internally used function to /register/ the given opened resource by consing
--- it to the list of opened resources of the region.
-register ∷ (Resource resource, MonadIO pr) ⇒ Opened resource → RegionT s pr ()
-register openedResource = RegionT $ do
-  openedResourcesIORef ← ask
-  liftIO $ modifyIORef openedResourcesIORef (Some openedResource:)
+-- | Internally used function to /register/ the given opened resource by
+-- /consing/ it to the list of opened resources of the region.
+register ∷ (Resource resource, MonadIO pr)
+         ⇒ RegionalHandle resource (RegionT s pr)
+         → RegionT s pr ()
+register regionalHandle = RegionT $ do
+  anyRegionalHandlesIORef ← ask
+  liftIO $ modifyIORef anyRegionalHandlesIORef (Any regionalHandle:)
 
 
 --------------------------------------------------------------------------------
@@ -452,29 +449,29 @@ class Dup α where
         ⇒ α (RegionT cs (RegionT ps ppr))
         → RegionT cs (RegionT ps ppr)
               (α (RegionT ps ppr))
-          -- The child region which returns the thing which can now be used in
-          -- the parent region.
 
 instance Resource resource ⇒ Dup (RegionalHandle resource) where
-    dup (RegionalHandle openedResource) = block $ do
+    dup (RegionalHandle {internalHandle, refCntIORef}) = block $ do
       -- Increment the reference count of the given opened resource so that it
       -- won't get closed when the current region terminates:
-      liftIO $ increment $ refCntIORef openedResource
+      liftIO $ increment refCntIORef
 
       -- The following registers the opened resource in the parent region so
       -- that it will get closed eventually:
+
+      let duppedRegionalHandle = RegionalHandle internalHandle refCntIORef
 
       -- (Note that if asynchronous exceptions weren't blocked and an exception
       -- is asynchronously thrown to this thread at this point after
       -- incrementing the opened resource's reference count but before
       -- registering it in the parent, the opened resource will never get
       -- closed, because its reference count will never reach 0!)
-      lift $ register openedResource
+      lift $ register duppedRegionalHandle
 
       -- Return a new regional handle containing the given opened resource. The
       -- type of the regional handle will be parameterized by the parent of this
       -- region.
-      return $ RegionalHandle openedResource
+      return duppedRegionalHandle
 
 
 --------------------------------------------------------------------------------
