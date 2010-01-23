@@ -59,7 +59,7 @@ source-repository head
   Location: http://code.haskell.org/~basvandijk/code/regions
 
 Library
-  GHC-Options: -O2 -Wall
+  GHC-Options: -Wall
   build-depends: base                      >= 4 && < 4.3
                , base-unicode-symbols      >= 0.1.1 && < 0.2
                , transformers              >= 0.1.4 && < 0.2
