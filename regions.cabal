@@ -4,7 +4,7 @@ cabal-version: >=1.6
 build-type:    Simple
 license:       BSD3
 license-file:  LICENSE
-copyright:     2009 Bas van Dijk
+copyright:     2010 Bas van Dijk
 author:        Bas van Dijk
 maintainer:    Bas van Dijk <v.dijk.bas@gmail.com>
 stability:     experimental
