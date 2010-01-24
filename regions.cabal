@@ -65,5 +65,5 @@ Library
                , transformers              >= 0.1.4   && < 0.2
                , MonadCatchIO-transformers >= 0.0.2.0 && < 0.1
   exposed-modules: Control.Monad.Trans.Region
-                 , Control.Monad.Trans.Region.Unsafe
+                   Control.Monad.Trans.Region.Unsafe
   other-modules:   Control.Monad.Trans.Region.Internal
