@@ -51,8 +51,8 @@ description:
 
   .
 
-  For an example of how to use this library see the @safer-file-handles@ or
-  @usb-safe@ packages.
+  For an example of how to use this library see the @safer-file-handles@,
+  @usb-safe@ or @regional-pointers@ packages.
 
 source-repository head
   Type:     darcs
