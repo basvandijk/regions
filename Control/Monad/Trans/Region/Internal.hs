@@ -64,9 +64,9 @@ module Control.Monad.Trans.Region.Internal
     , dup
 
       -- * Handy functions for writing monadic instances
+    , liftCallCC
     , mapRegionT
     , liftCatch
-      -- | /TODO: define and export: /@liftCallCC@
 
       -- * Parent/child relationship between regions.
     , ParentOf
@@ -99,11 +99,11 @@ import Control.Monad.CatchIO ( MonadCatchIO, block, bracket )
 -- from transformers:
 import Control.Monad.Trans   ( MonadTrans, lift, MonadIO, liftIO )
 
-import qualified Control.Monad.Trans.Reader as Reader ( liftCatch )
-import           Control.Monad.Trans.Reader ( ReaderT
-                                            , ask
-                                            , runReaderT, mapReaderT
-                                            )
+import qualified Control.Monad.Trans.Reader as R ( liftCallCC, liftCatch )
+import           Control.Monad.Trans.Reader      ( ReaderT
+                                                 , ask
+                                                 , runReaderT, mapReaderT
+                                                 )
 -- from base-unicode-symbols:
 import Data.Eq.Unicode       ( (≡) )
 import Data.Function.Unicode ( (∘) )
@@ -478,12 +478,10 @@ instance Resource resource ⇒ Dup (RegionalHandle resource) where
 -- * Handy functions for writing monadic instances
 --------------------------------------------------------------------------------
 
--- TODO:
--- -- | Lift a @callCC@ operation to the new monad.
--- liftCallCC ∷ (((α → pr β) → pr α) → pr α)        -- ^ @callCC@ on the argument monad.
---            → ((α → RegionT s pr β) → RegionT s pr α)
---            → RegionT s pr α
--- liftCallCC callCC f = RegionT $ ???
+-- | Lift a @callCC@ operation to the new monad.
+liftCallCC ∷ (((α → pr β) → pr α) → pr α)
+           → (((α → RegionT s pr β) → RegionT s pr α) → RegionT s pr α)
+liftCallCC callCC f = RegionT $ R.liftCallCC callCC $ unRegionT ∘ f ∘ (RegionT ∘)
 
 -- | Transform the computation inside a region.
 mapRegionT ∷ (m α → n β) → RegionT s m α → RegionT s n β
@@ -494,7 +492,7 @@ liftCatch ∷ (pr α → (e → pr α) → pr α) -- ^ @catch@ on the argument m
           → RegionT s pr α             -- ^ Computation to attempt.
           → (e → RegionT s pr α)       -- ^ Exception handler.
           → RegionT s pr α
-liftCatch f m h = RegionT $ Reader.liftCatch f (unRegionT m) (unRegionT ∘ h)
+liftCatch f m h = RegionT $ R.liftCatch f (unRegionT m) (unRegionT ∘ h)
 
 
 --------------------------------------------------------------------------------

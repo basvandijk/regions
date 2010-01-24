@@ -38,9 +38,9 @@ module Control.Monad.Trans.Region
     , ParentOf
 
       -- * Handy functions for writing monadic instances
+    , liftCallCC
     , mapRegionT
     , liftCatch
-      -- | /TODO: define and export: /@liftCallCC@
     ) where
 
 import Control.Monad.Trans.Region.Internal
