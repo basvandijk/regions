@@ -186,14 +186,24 @@ data RegionalHandle resource (r ∷ * → *) = RegionalHandle
 
       {-| Get the reference count from the given regional handle.
 
-      Handles are reference counted because they may be /duplicated/
-      to a parent region using 'dup'.
+      Normally a handle should be closed when its originating region
+      terminates. There are two exceptions to this rule:
 
+      * When a handle is /duplicated/ to a parent region using 'dup'
+        it should only be closed when the parent region terminates.
+
+      * When a region is executed in a new thread using 'forkTopRegion' all
+        handles that can be referenced in the originating region should also be
+        referencable in the new forked region. Therefore those handles should only be
+        closed when the originating region or the new forked region terminates,
+        whichever comes /last/.
+
+      To implement this behaviour, handles are reference counted.
       The reference count is:
 
        * Initialized at 1 in 'open'.
 
-       * Incremented in 'dup'.
+       * Incremented in 'dup' and 'forkTopRegion'.
 
        * Decremented on termination of 'runRegionWith'
          (which is called by 'runRegionT' and 'forkTopRegion').
