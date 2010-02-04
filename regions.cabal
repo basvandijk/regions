@@ -58,4 +58,5 @@ Library
   exposed-modules: Control.Resource
                    Control.Monad.Trans.Region
                    Control.Monad.Trans.Region.Unsafe
+                   Data.RegionRef
   other-modules:   Control.Monad.Trans.Region.Internal
