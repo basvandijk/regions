@@ -4,7 +4,6 @@
            , RankNTypes
            , ScopedTypeVariables
            , KindSignatures
-           , TypeFamilies
            , MultiParamTypeClasses
            , FunctionalDependencies
            , UndecidableInstances
@@ -33,14 +32,8 @@
 --------------------------------------------------------------------------------
 
 module Control.Monad.Trans.Region.Internal
-    ( -- * Scarce resources
-      Resource
-    , Handle
-    , openResource
-    , closeResource
-
-      -- * Regions
-    , RegionT
+    ( -- * Regions
+      RegionT
 
       -- * Running regions
     , runRegionT
@@ -54,7 +47,6 @@ module Control.Monad.Trans.Region.Internal
     , RegionalHandle
 
     , internalHandle
-    , mapInternalHandle
 
     , open
     , with
@@ -108,24 +100,12 @@ import           Control.Monad.Trans.Reader      ( ReaderT
 import Data.Eq.Unicode       ( (≡) )
 import Data.Function.Unicode ( (∘) )
 
-
---------------------------------------------------------------------------------
--- * Scarce resources
---------------------------------------------------------------------------------
-
-{-| Class of /scarce/ resources. A scarce resource is a resource that only one
-user can use at a time. (like a file, memory pointer or USB device for
-example).
-
-Because of the scarcity, these resources need to be /opened/ to grant temporary
-sole access to the resource. When the resource is no longer needed it should be
-/closed/ a.s.a.p to grant others access to the resource.
--}
-class Resource resource where
-    data Handle resource ∷ *
-
-    openResource  ∷ resource → IO (Handle resource)
-    closeResource ∷ Handle resource → IO ()
+-- from ourselves:
+import Control.Resource ( Resource
+                        , Handle
+                        , openResource
+                        , closeResource
+                        )
 
 
 --------------------------------------------------------------------------------
@@ -194,7 +174,7 @@ data RegionalHandle resource (r ∷ * → *) = RegionalHandle
 
       * When a region is executed in a new thread using 'forkTopRegion' all
         handles that can be referenced in the originating region should also be
-        referencable in the new forked region. Therefore those handles should only be
+        referenceable in the new forked region. Therefore those handles should only be
         closed when the originating region or the new forked region terminates,
         whichever comes /last/.
 
@@ -213,11 +193,6 @@ data RegionalHandle resource (r ∷ * → *) = RegionalHandle
       -}
     , refCntIORef ∷ IORef Int
     }
-
--- | Modify the internal handle from the given regional handle.
-mapInternalHandle ∷ (Handle resource1 → Handle resource2)
-                  → (RegionalHandle resource1 r → RegionalHandle resource2 r)
-mapInternalHandle f rh = rh { internalHandle = f $ internalHandle rh }
 
 {-| Internally used function that atomically decrements the reference count that
 is stored in the given @IORef@. The function returns the decremented reference

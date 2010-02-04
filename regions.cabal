@@ -1,5 +1,5 @@
 name:          regions
-version:       0.3.1
+version:       0.4
 cabal-version: >=1.6
 build-type:    Simple
 license:       BSD3
@@ -31,28 +31,19 @@ description:
 
   .
 
-  This package provides two modules:
-
-  .
-
-  * @Control.Monad.Trans.Region.Unsafe@ should only be used by library authors
-    wishing to allow their users to open their type of resources in a region. It
-    should /not/ be used by end-users directly!
-
-  .
-
-  * @Control.Monad.Trans.Region@ provides the public and safe interface to
-    regions which can be used by end-users.
-
-  .
-
   Also see the @regions-monadsfd@ and @regions-monadstf@ packages which provide
   instances for the classes in the respected monads packages.
 
   .
 
-  For an example of how to use this library see the @safer-file-handles@,
+  For an example on how to use this library see the @safer-file-handles@,
   @usb-safe@ or @regional-pointers@ packages.
+
+  .
+
+  Note that if you want to open /your/ type of scarce resource in a region, the
+  only thing you have to do is define an instance for the @Resource@ class
+  (which you can find in: @Control.Resource@).
 
 source-repository head
   Type:     darcs
@@ -64,6 +55,7 @@ Library
                , base-unicode-symbols      >= 0.1.1   && < 0.2
                , transformers              >= 0.1.4   && < 0.2
                , MonadCatchIO-transformers >= 0.0.2.0 && < 0.1
-  exposed-modules: Control.Monad.Trans.Region
+  exposed-modules: Control.Resource
+                   Control.Monad.Trans.Region
                    Control.Monad.Trans.Region.Unsafe
   other-modules:   Control.Monad.Trans.Region.Internal

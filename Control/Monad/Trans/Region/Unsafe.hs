@@ -1,3 +1,5 @@
+{-# LANGUAGE UnicodeSyntax #-}
+
 -------------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Monad.Trans.Region.Unsafe
@@ -10,29 +12,17 @@
 -- close the resource manually, which will defeat the safety-guarantees that
 -- this package provides!
 --
--- This module should /only/ be used by library authors wishing to allow their
--- end-users to open their resources in a region.
---
--- To create a module or library that allows your users to open your resources
--- in a region, the only thing you have to do is to define an instance for
--- 'Resource' for your type of resource.
---
--- Make sure not to re-export anything from this module. Either re-export things
--- from @Control.Monad.Trans.Region@ or tell your users to import that module
--- directly.
---
 --------------------------------------------------------------------------------
 
 module Control.Monad.Trans.Region.Unsafe
-    ( -- * Scarce resources
-      Resource
-    , Handle
-
-    , openResource
-    , closeResource
-
-    , internalHandle
+    ( internalHandle
     , mapInternalHandle
     ) where
 
-import Control.Monad.Trans.Region.Internal
+import Control.Monad.Trans.Region.Internal ( RegionalHandle, internalHandle )
+import Control.Resource ( Handle )
+
+-- | Modify the internal handle from the given regional handle.
+mapInternalHandle ∷ (Handle resource1 → Handle resource2)
+                  → (RegionalHandle resource1 r → RegionalHandle resource2 r)
+mapInternalHandle f rh = rh { internalHandle = f $ internalHandle rh }
