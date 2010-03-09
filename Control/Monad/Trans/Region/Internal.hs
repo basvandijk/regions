@@ -75,12 +75,12 @@ import Control.Concurrent  ( forkIO, ThreadId )
 import Control.Applicative ( Applicative, Alternative )
 import Control.Monad       ( Monad, return, (>>=), fail
                            , (>>), when, liftM2, mapM_, forM_
-                           , Functor
                            , MonadPlus
                            )
 import Control.Monad.Fix   ( MonadFix )
 import System.IO           ( IO )
 import Data.Function       ( ($) )
+import Data.Functor        ( Functor )
 import Data.Int            ( Int )
 import Data.IORef          ( IORef, newIORef
                            , readIORef, modifyIORef, atomicModifyIORef
@@ -101,11 +101,7 @@ import Data.Eq.Unicode       ( (≡) )
 import Data.Function.Unicode ( (∘) )
 
 -- from ourselves:
-import Control.Resource ( Resource
-                        , Handle
-                        , openResource
-                        , closeResource
-                        )
+import Control.Resource ( Resource, Handle, openResource, closeResource )
 
 
 --------------------------------------------------------------------------------
