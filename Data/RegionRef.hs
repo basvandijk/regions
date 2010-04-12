@@ -41,7 +41,7 @@ import Data.IORef    ( IORef
 import Data.Function.Unicode ( (∘) )
 
 -- from transformers:
-import Control.Monad.Trans ( MonadIO, liftIO )
+import Control.Monad.IO.Class ( MonadIO, liftIO )
 
 -- from ourselves:
 import Control.Monad.Trans.Region ( RegionT, ParentOf )

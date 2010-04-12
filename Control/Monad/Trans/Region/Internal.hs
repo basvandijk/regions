@@ -89,7 +89,8 @@ import Data.IORef          ( IORef, newIORef
 import Control.Monad.CatchIO ( MonadCatchIO, block, bracket )
 
 -- from transformers:
-import Control.Monad.Trans   ( MonadTrans, lift, MonadIO, liftIO )
+import Control.Monad.Trans.Class ( MonadTrans, lift )
+import Control.Monad.IO.Class    ( MonadIO, liftIO )
 
 import qualified Control.Monad.Trans.Reader as R ( liftCallCC, liftCatch )
 import           Control.Monad.Trans.Reader      ( ReaderT
@@ -101,7 +102,8 @@ import Data.Eq.Unicode       ( (≡) )
 import Data.Function.Unicode ( (∘) )
 
 -- from ourselves:
-import Control.Resource ( Resource, Handle, openResource, closeResource )
+import           Control.Resource             ( Resource, Handle )
+import qualified Control.Resource as Resource ( open, close )
 
 
 --------------------------------------------------------------------------------
