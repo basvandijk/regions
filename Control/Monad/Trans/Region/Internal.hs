@@ -2,16 +2,7 @@
            , NoImplicitPrelude
            , GeneralizedNewtypeDeriving
            , RankNTypes
-           , ScopedTypeVariables
            , KindSignatures
-           , MultiParamTypeClasses
-           , FunctionalDependencies
-           , UndecidableInstances
-           , FlexibleInstances
-           , OverlappingInstances
-           , NamedFieldPuns
-           , ExistentialQuantification
-           , ViewPatterns
   #-}
 
 -------------------------------------------------------------------------------
@@ -35,6 +26,11 @@ module Control.Monad.Trans.Region.Internal
     ( -- * Regions
       RegionT
 
+      -- * Close handles
+    , CloseAction
+    , CloseHandle
+    , register
+
       -- * Running regions
     , runRegionT
 
@@ -43,25 +39,13 @@ module Control.Monad.Trans.Region.Internal
 
     , forkTopRegion
 
-      -- * Opening resources
-    , RegionalHandle
-
-    , internalHandle
-
-    , open
-    , with
-
       -- * Duplication
-    , Dup
-    , dup
+    , Dup(dup)
 
       -- * Handy functions for writing monadic instances
     , liftCallCC
     , mapRegionT
     , liftCatch
-
-      -- * Parent/child relationship between regions.
-    , ParentOf
     ) where
 
 
@@ -72,15 +56,15 @@ module Control.Monad.Trans.Region.Internal
 -- from base:
 import Prelude             ( (+), (-), seq, fromInteger )
 import Control.Concurrent  ( forkIO, ThreadId )
-import Control.Applicative ( Applicative, Alternative, (<*>) )
+import Control.Applicative ( Applicative, Alternative )
 import Control.Monad       ( Monad, return, (>>=), fail
                            , (>>), when, forM_
                            , MonadPlus
                            )
 import Control.Monad.Fix   ( MonadFix )
 import System.IO           ( IO )
-import Data.Function       ( ($), flip )
-import Data.Functor        ( Functor, (<$>) )
+import Data.Function       ( ($) )
+import Data.Functor        ( Functor )
 import Data.Int            ( Int )
 import Data.IORef          ( IORef, newIORef
                            , readIORef, modifyIORef, atomicModifyIORef
@@ -93,17 +77,12 @@ import Control.Monad.Trans.Class ( MonadTrans, lift )
 import Control.Monad.IO.Class    ( MonadIO, liftIO )
 
 import qualified Control.Monad.Trans.Reader as R ( liftCallCC, liftCatch )
-import           Control.Monad.Trans.Reader      ( ReaderT
-                                                 , ask
+import           Control.Monad.Trans.Reader      ( ReaderT(ReaderT)
                                                  , runReaderT, mapReaderT
                                                  )
 -- from base-unicode-symbols:
 import Data.Eq.Unicode       ( (≡) )
 import Data.Function.Unicode ( (∘) )
-
--- from ourselves:
-import           Control.Resource             ( Resource, Handle )
-import qualified Control.Resource as Resource ( open, close )
 
 
 --------------------------------------------------------------------------------
@@ -118,7 +97,7 @@ usually the region which is running this region. However when you are running a
 'TopRegion' the parent region will be 'IO'.
 -}
 newtype RegionT s (pr ∷ * → *) α = RegionT
-    { unRegionT ∷ ReaderT (IORef [AnyRegionalHandle]) pr α }
+    { unRegionT ∷ ReaderT (IORef [Handle]) pr α }
 
     deriving ( Functor
              , Applicative
@@ -131,66 +110,32 @@ newtype RegionT s (pr ∷ * → *) α = RegionT
              , MonadCatchIO
              )
 
--- | An internally used datatype which adds an existential wrapper around a
--- 'RegionalHandle' to hide the @resource@ type.
---
--- If the @resource@ type is not hidden, regions must be parameterized by
--- it. This is undesirable because then only one type of resource can be opened
--- in a region. The following allows all types of resources to be opened in a
--- single region as long as they have an instance for 'Resource'.
-data AnyRegionalHandle = ∀ resource (r ∷ * → *). Resource resource
-                       ⇒ Any (RegionalHandle resource r)
+data Handle = Handle CloseAction (IORef RefCnt)
 
--- | A handle to an opened resource parameterized by the @resource@ and the
--- region @r@ in which it was created.
-data RegionalHandle resource (r ∷ * → *) = RegionalHandle
-    { {-| Get the internal handle from the given regional handle.
+-- | An 'IO' computation that closes or finalizes a resource. For example
+-- @hClose@ or @free@.
+type CloseAction = IO ()
 
-      /Warning:/ This function should not be exported to or used by end-users
-      because it allows them to close the handle manually, which will defeat the
-      safety-guarantees that this package provides!
+type RefCnt = Int
 
-      /Tip:/ If you enable the @ViewPatterns@ language extension you can use
-      @internalHandle@ as a view-pattern as in the following example from the
-      @usb-safe@ package:
 
-      @
-      resetDevice :: (pr \`ParentOf\` cr, MonadIO cr)
-                  -> RegionalHandle USB.Device pr -> cr ()
-      resetDevice (internalHandle -> (DeviceHandle ...)) = ...
-      @
-      -}
-      internalHandle ∷ Handle resource
+--------------------------------------------------------------------------------
+-- * Close handles
+--------------------------------------------------------------------------------
 
-      {-| Get the reference count from the given regional handle.
+-- | A handle to a 'CloseAction' that allows you to duplicate the action to a
+-- parent region using 'dup'.
+newtype CloseHandle (r ∷ * → *) = CloseHandle Handle
 
-      Normally a handle should be closed when its originating region
-      terminates. There are two exceptions to this rule:
-
-      * When a handle is /duplicated/ to a parent region using 'dup'
-        it should only be closed when the parent region terminates.
-
-      * When a region is executed in a new thread using 'forkTopRegion' all
-        handles that can be referenced in the originating region should also be
-        referenceable in the new forked region. Therefore those handles should only be
-        closed when the originating region or the new forked region terminates,
-        whichever comes /last/.
-
-      To implement this behaviour, handles are reference counted.
-      The reference count is:
-
-       * Initialized at 1 in 'open'.
-
-       * Incremented in 'dup' and 'forkTopRegion'.
-
-       * Decremented on termination of 'runRegionWith'
-         (which is called by 'runRegionT' and 'forkTopRegion').
-
-      Only when the reference count reaches 0 will the resource actually be
-      closed.
-      -}
-    , refCntIORef ∷ IORef Int
-    }
+-- | Register the 'CloseAction' in the region. When the region terminates all
+-- registered close actions will be perfomed if they're not duplicated to a
+-- parent region.
+register ∷ MonadIO pr ⇒ CloseAction → RegionT s pr (CloseHandle (RegionT s pr))
+register closeAction = RegionT $ ReaderT $ \hsIORef → liftIO $ do
+                         refCntIORef ← newIORef 1
+                         let h = Handle closeAction refCntIORef
+                         modifyIORef hsIORef (h:)
+                         return $ CloseHandle h
 
 
 --------------------------------------------------------------------------------
@@ -199,9 +144,9 @@ data RegionalHandle resource (r ∷ * → *) = RegionalHandle
 
 {-| Execute a region inside its parent region @pr@.
 
-All resources which have been opened in the given region using 'open', and which
-haven't been duplicated using 'dup', will be closed on exit from this function
-wether by normal termination or by raising an exception.
+All resources which have been opened in the given region and which haven't been
+duplicated using 'dup', will be closed on exit from this function wether by
+normal termination or by raising an exception.
 
 Also all resources which have been duplicated to this region from a child region
 are closed on exit if they haven't been duplicated themselves.
@@ -209,13 +154,6 @@ are closed on exit if they haven't been duplicated themselves.
 Note the type variable @s@ of the region wich is only quantified over the region
 itself. This ensures that /all/ values, having a type containing @s@, can /not/
 be returned from this function. (Note the similarity with the @ST@ monad.)
-
-An example of such a value is a 'RegionalHandle'. Regional handles are created by
-opening a resource in a region using 'open'. Regional handles are parameterized by
-the region in which they were created. So regional handles have this @s@ in their
-type. This ensures that these regional handles, which may have been closed on exit
-from this function, can't be returned from this function. This ensures you can
-never do any IO with a closed regional handle.
 
 Note that it is possible to run a region inside another region.
 -}
@@ -241,8 +179,7 @@ runTopRegion = runRegionT
 
 Note that the forked region has the same type variable @s@ as the resulting
 region. This means that all values which can be referenced in the resulting
-region (like 'RegionalHandle's for example) can also be referenced in the forked
-region.
+region can also be referenced in the forked region.
 
 For example the following is allowed:
 
@@ -258,41 +195,37 @@ thread are closed only when the current thread or the forked thread terminates
 whichever comes /last/.
 -}
 forkTopRegion ∷ MonadIO pr ⇒ TopRegion s () → RegionT s pr ThreadId
-forkTopRegion m = RegionT $ do
-  rhsIORef ← ask
-  liftIO $ do
-    rhs ← readIORef rhsIORef
-    block $ do
-      forM_ rhs $ \(Any (RegionalHandle {refCntIORef})) → increment refCntIORef
-      forkIO $ runRegionWith rhs m
+forkTopRegion m = RegionT $ ReaderT $ \hsIORef → liftIO $ do
+                    hs ← readIORef hsIORef
+                    block $ do
+                      forM_ hs $ \(Handle _ refCntIORef) → increment refCntIORef
+                      forkIO $ runRegionWith hs m
 
 -- | Internally used function that actually runs the region on the given list of
 -- opened resources.
 runRegionWith ∷ ∀ s pr α. MonadCatchIO pr
-              ⇒ [AnyRegionalHandle] → RegionT s pr α → pr α
-runRegionWith rhs = bracket (liftIO before) (liftIO ∘ after)
-                  ∘ runReaderT ∘ unRegionT
+              ⇒ [Handle] → RegionT s pr α → pr α
+runRegionWith hs = bracket (liftIO before) (liftIO ∘ after)
+                 ∘ runReaderT ∘ unRegionT
     where
-      before = newIORef rhs
-      after rhsIORef = do
-        rhs' ← readIORef rhsIORef
-        forM_ rhs' $ \(Any (RegionalHandle { internalHandle
-                                           , refCntIORef
-                                           })) → do
+      before = newIORef hs
+      after hsIORef = do
+        hs' ← readIORef hsIORef
+        forM_ hs' $ \(Handle closeAction refCntIORef) → do
           refCnt ← decrement refCntIORef
-          when (refCnt ≡ 0) $ Resource.close internalHandle
+          when (refCnt ≡ 0) closeAction
 
 -- | Internally used function that atomically decrements the reference count
 -- that is stored in the given @IORef@. The function returns the decremented
 -- reference count.
-decrement ∷ IORef Int → IO Int
+decrement ∷ IORef RefCnt → IO RefCnt
 decrement ioRef = do atomicModifyIORef ioRef $ \refCnt →
                        let refCnt' = refCnt - 1
                        in (refCnt', refCnt')
 
 -- | Internally used function that atomically increments the reference count that
 -- is stored in the given @IORef@.
-increment ∷ IORef Int → IO ()
+increment ∷ IORef RefCnt → IO ()
 increment ioRef = do refCnt' ← atomicModifyIORef ioRef $ \refCnt →
                                  let refCnt' = refCnt + 1
                                  in (refCnt', refCnt')
@@ -300,55 +233,11 @@ increment ioRef = do refCnt' ← atomicModifyIORef ioRef $ \refCnt →
 
 
 --------------------------------------------------------------------------------
--- * Opening resources
---------------------------------------------------------------------------------
-
-{-| Open the given resource in a region yielding a regional handle to it.
-
-Note that the returned regional handle is parameterized by the region in which
-it was created. This ensures that regional handles can never escape their
-region. And it also allows operations on regional handles to be executed in a
-child region of the region in which the regional handle was created.
-
-Note that if you /do/ wish to return a regional handle from the region in which
-it was created you have to /duplicate/ the handle by applying 'dup' to it.
--}
-open ∷ (Resource resource, MonadCatchIO pr)
-     ⇒ resource
-     → RegionT s pr
-         (RegionalHandle resource (RegionT s pr))
-open resource = block $ do
-  rh ← liftIO $ RegionalHandle <$> Resource.open resource <*> newIORef 1
-  register rh
-  return rh
-
--- | Internally used function to /register/ the given opened resource by
--- /consing/ it to the list of opened resources of the region.
-register ∷ (Resource resource, MonadIO pr)
-         ⇒ RegionalHandle resource (RegionT s pr)
-         → RegionT s pr ()
-register rh = RegionT $ ask >>= liftIO ∘ flip modifyIORef (Any rh:)
-
-{-| A convenience function which opens the given resource, applies the given
-continuation function to the resulting regional handle and runs the resulting
-region.
-
-Note that: @with resource f = 'runRegionT' ('open' resource '>>=' f)@.
--}
-with ∷ (Resource resource, MonadCatchIO pr)
-     ⇒ resource
-     → (∀ s. RegionalHandle resource (RegionT s pr) → RegionT s pr α)
-     → pr α
-with resource f = runRegionT $ open resource >>= f
-
-
---------------------------------------------------------------------------------
 -- * Duplication
 --------------------------------------------------------------------------------
 
-{-| Duplicate an @&#945;@ in the parent region. This @&#945;@ will usually be a
-@(@'RegionalHandle'@ resource)@ but it can be any value \"derived\" from this
-regional handle.
+{-| Duplicate an @&#945;@ in the parent region. This @&#945;@ will usually be
+some type of regional handle.
 
 For example, suppose you run the following region:
 
@@ -396,12 +285,12 @@ class Dup α where
         → RegionT cs (RegionT ps ppr)
               (α (RegionT ps ppr))
 
-instance Resource resource ⇒ Dup (RegionalHandle resource) where
-    dup (RegionalHandle {internalHandle, refCntIORef}) = block $ do
-      liftIO $ increment refCntIORef
-      let rh = RegionalHandle internalHandle refCntIORef
-      lift $ register rh
-      return rh
+instance Dup CloseHandle where
+    dup (CloseHandle h@(Handle _ refCntIORef)) =
+      lift $ RegionT $ ReaderT $ \hsIORef → liftIO $ block $ do
+        increment refCntIORef
+        modifyIORef hsIORef (h:)
+        return $ CloseHandle h
 
 
 --------------------------------------------------------------------------------
@@ -423,51 +312,6 @@ liftCatch ∷ (pr α → (e → pr α) → pr α) -- ^ @catch@ on the argument m
           → (e → RegionT s pr α)       -- ^ Exception handler.
           → RegionT s pr α
 liftCatch f m h = RegionT $ R.liftCatch f (unRegionT m) (unRegionT ∘ h)
-
-
---------------------------------------------------------------------------------
--- * Parent/child relationship between regions.
---------------------------------------------------------------------------------
-
-{-| The @ParentOf@ class declares the parent/child relationship between regions.
-
-A region is the parent of another region if they're either equivalent like:
-
-@
-RegionT ps pr  \`ParentOf\`  RegionT ps pr
-@
-
-or if it is the parent of the parent of the child like:
-
-@
-RegionT ps ppr \`ParentOf\` RegionT cs
-                              (RegionT pcs
-                                (RegionT ppcs
-                                  (RegionT ps ppr)))
-@
--}
-class (Monad pr, Monad cr) ⇒ pr `ParentOf` cr
-
-instance Monad r ⇒ ParentOf r r
-
-instance ( Monad cr
-         , cr `TypeCast2` RegionT s pcr
-         , pr `ParentOf` pcr
-         )
-         ⇒ ParentOf pr cr
-
-
---------------------------------------------------------------------------------
--- Type casting
---------------------------------------------------------------------------------
-
-class TypeCast2     (a ∷ * → *) (b ∷ * → *) |   a → b,   b → a
-class TypeCast2'  t (a ∷ * → *) (b ∷ * → *) | t a → b, t b → a
-class TypeCast2'' t (a ∷ * → *) (b ∷ * → *) | t a → b, t b → a
-
-instance TypeCast2'  () a b ⇒ TypeCast2    a b
-instance TypeCast2'' t  a b ⇒ TypeCast2' t a b
-instance TypeCast2'' () a a
 
 
 -- The End ---------------------------------------------------------------------

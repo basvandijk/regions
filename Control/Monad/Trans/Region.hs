@@ -24,18 +24,10 @@ module Control.Monad.Trans.Region
     , runTopRegion
     , forkTopRegion
 
-      -- * Opening resources
-    , RegionalHandle
-    , open
-
-    , with
-
       -- * Duplication
-    , Dup
-    , dup
+    , Dup(dup)
 
-      -- * Parent/child relationship between regions.
-    , ParentOf
+    , module Control.Monad.Trans.Region.ParentOf
 
       -- * Handy functions for writing monadic instances
     , liftCallCC
@@ -44,3 +36,4 @@ module Control.Monad.Trans.Region
     ) where
 
 import Control.Monad.Trans.Region.Internal
+import Control.Monad.Trans.Region.ParentOf

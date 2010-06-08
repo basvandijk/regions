@@ -1,5 +1,5 @@
 name:          regions
-version:       0.5
+version:       0.6
 cabal-version: >=1.6
 build-type:    Simple
 license:       BSD3
@@ -44,8 +44,8 @@ Library
                , base-unicode-symbols      >= 0.1.1   && < 0.3
                , transformers              >= 0.2     && < 0.3
                , MonadCatchIO-transformers >= 0.2     && < 0.3
-  exposed-modules: Control.Resource
-                   Control.Monad.Trans.Region
-                   Control.Monad.Trans.Region.Unsafe
+  exposed-modules: Control.Monad.Trans.Region
+                   Control.Monad.Trans.Region.ParentOf
+                   Control.Monad.Trans.Region.Close
                    Data.RegionRef
   other-modules:   Control.Monad.Trans.Region.Internal
