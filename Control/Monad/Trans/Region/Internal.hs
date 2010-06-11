@@ -300,18 +300,17 @@ instance Dup CloseHandle where
 -- | Lift a @callCC@ operation to the new monad.
 liftCallCC ∷ (((α → pr β) → pr α) → pr α)
            → (((α → RegionT s pr β) → RegionT s pr α) → RegionT s pr α)
-liftCallCC callCC f = RegionT $ R.liftCallCC callCC $ unRegionT ∘ f ∘ (RegionT ∘)
+liftCallCC callCC = \f → RegionT $ R.liftCallCC callCC $ unRegionT ∘ f ∘ (RegionT ∘)
 
 -- | Transform the computation inside a region.
-mapRegionT ∷ (m α → n β) → RegionT s m α → RegionT s n β
+mapRegionT ∷ (m α → n β)
+           → (RegionT s m α → RegionT s n β)
 mapRegionT f = RegionT ∘ mapReaderT f ∘ unRegionT
 
 -- | Lift a 'catchError' operation to the new monad.
-liftCatch ∷ (pr α → (e → pr α) → pr α) -- ^ @catch@ on the argument monad.
-          → RegionT s pr α             -- ^ Computation to attempt.
-          → (e → RegionT s pr α)       -- ^ Exception handler.
-          → RegionT s pr α
-liftCatch f m h = RegionT $ R.liftCatch f (unRegionT m) (unRegionT ∘ h)
+liftCatch ∷ (pr α → (e → pr α) → pr α)
+          → (RegionT s pr α → (e → RegionT s pr α) → RegionT s pr α)
+liftCatch f = \m h → RegionT $ R.liftCatch f (unRegionT m) (unRegionT ∘ h)
 
 
 -- The End ---------------------------------------------------------------------
