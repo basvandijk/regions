@@ -14,10 +14,10 @@
 
 module Control.Monad.Trans.Region.Close ( CloseAction
                                         , CloseHandle
-                                        , register
+                                        , onExit
                                         ) where
 
 import Control.Monad.Trans.Region.Internal ( CloseAction
                                            , CloseHandle
-                                           , register
+                                           , onExit
                                            )

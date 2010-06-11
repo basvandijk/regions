@@ -29,7 +29,7 @@ module Control.Monad.Trans.Region.Internal
       -- * Close handles
     , CloseAction
     , CloseHandle
-    , register
+    , onExit
 
       -- * Running regions
     , runRegionT
@@ -130,12 +130,12 @@ newtype CloseHandle (r ∷ * → *) = CloseHandle Handle
 -- | Register the 'CloseAction' in the region. When the region terminates all
 -- registered close actions will be perfomed if they're not duplicated to a
 -- parent region.
-register ∷ MonadIO pr ⇒ CloseAction → RegionT s pr (CloseHandle (RegionT s pr))
-register closeAction = RegionT $ ReaderT $ \hsIORef → liftIO $ do
-                         refCntIORef ← newIORef 1
-                         let h = Handle closeAction refCntIORef
-                         modifyIORef hsIORef (h:)
-                         return $ CloseHandle h
+onExit ∷ MonadIO pr ⇒ CloseAction → RegionT s pr (CloseHandle (RegionT s pr))
+onExit closeAction = RegionT $ ReaderT $ \hsIORef → liftIO $ do
+                       refCntIORef ← newIORef 1
+                       let h = Handle closeAction refCntIORef
+                       modifyIORef hsIORef (h:)
+                       return $ CloseHandle h
 
 
 --------------------------------------------------------------------------------
