@@ -205,8 +205,9 @@ forkTopRegion m = RegionT $ ReaderT $ \hsIORef → liftIO $ do
 -- opened resources.
 runRegionWith ∷ ∀ s pr α. MonadCatchIO pr
               ⇒ [Handle] → RegionT s pr α → pr α
-runRegionWith hs = bracket (liftIO before) (liftIO ∘ after)
-                 ∘ runReaderT ∘ unRegionT
+runRegionWith hs r = bracket (liftIO before)
+                             (liftIO ∘ after)
+                             (runReaderT $ unRegionT r)
     where
       before = newIORef hs
       after hsIORef = do
