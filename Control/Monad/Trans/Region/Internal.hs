@@ -308,7 +308,7 @@ mapRegionT ∷ (m α → n β)
            → (RegionT s m α → RegionT s n β)
 mapRegionT f = RegionT ∘ mapReaderT f ∘ unRegionT
 
--- | Lift a 'catchError' operation to the new monad.
+-- | Lift a @catchError@ operation to the new monad.
 liftCatch ∷ (pr α → (e → pr α) → pr α)
           → (RegionT s pr α → (e → RegionT s pr α) → RegionT s pr α)
 liftCatch f = \m h → RegionT $ R.liftCatch f (unRegionT m) (unRegionT ∘ h)
