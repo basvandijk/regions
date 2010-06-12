@@ -260,7 +260,7 @@ Now in this child region you open the resource @r1@:
 
 ...yielding the regional handle @r1h@. Note that:
 
-@r1h :: RegionalHandle resource (RegionT cs (RegionT ps ppr))@
+@r1h :: RegionalHandle (RegionT cs (RegionT ps ppr))@
 
 where @cs@ is bound by the inner (child) @runRegionT@ and @ps@ is
 bound by the outer (parent) @runRegionT@.
@@ -276,7 +276,7 @@ However, if you duplicate the regional handle you can safely return it.
         return r1hDup
 @
 
-Note that @r1hDup :: RegionalHandle resource (RegionT ps ppr)@
+Note that @r1hDup :: RegionalHandle (RegionT ps ppr)@
 
 Back in the parent region you can safely operate on @r1hDup@.
 -}
