@@ -12,10 +12,10 @@
 --
 --------------------------------------------------------------------------------
 
-module Control.Monad.Trans.Region.Close ( CloseAction
-                                        , CloseHandle
-                                        , onExit
-                                        ) where
+module Control.Monad.Trans.Region.OnExit ( CloseAction
+                                         , CloseHandle
+                                         , onExit
+                                         ) where
 
 import Control.Monad.Trans.Region.Internal ( CloseAction
                                            , CloseHandle

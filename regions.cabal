@@ -46,6 +46,6 @@ Library
                , MonadCatchIO-transformers >= 0.2     && < 0.3
   exposed-modules: Control.Monad.Trans.Region
                    Control.Monad.Trans.Region.ParentOf
-                   Control.Monad.Trans.Region.Close
+                   Control.Monad.Trans.Region.OnExit
                    Data.RegionRef
   other-modules:   Control.Monad.Trans.Region.Internal
