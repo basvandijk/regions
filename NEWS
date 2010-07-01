@@ -1,0 +1,82 @@
+0.6.0.1
+
+(Released on Wed Jun 16 13:45:27 UTC 2010)
+
+* Removed outdated documentation.
+
+
+0.6
+
+(Released on Wed Jun 16 09:11:23 UTC 2010)
+
+* Major change: removed the Resource class in favor of the much
+  simpler 'onExit' function.
+
+* Renamed Control.Monad.Trans.Region.Close to
+  Control.Monad.Trans.Region.OnExit
+
+
+0.5
+
+(Released on Sun May 2 20:24:19 UTC 2010)
+
+* Renamed openResource and closeResource to open and close
+  respectively The intention is that Control.Resource should be
+  imported qualified.
+
+* Updated dependencies
+  transformers              >= 0.2   && < 0.3
+  MonadCatchIO-transformers >= 0.2   && < 0.3
+  base-unicode-symbols      >= 0.1.1 && < 0.3
+
+
+0.4
+
+(Released on Thu Feb 4 10:17:47 UTC 2010)
+
+* Added Data.RegionRef.
+
+* Moved the Resource class to its own module Control.Resource.
+
+* Depend on more compatible versions of MonadCatchIO-transformers.
+
+* Defined and exported liftCallCC.
+
+
+0.3
+
+(Released on Sat Jan 23 14:25:08 UTC 2010)
+
+* Add 'mapInternalHandle'.
+
+* Export the 'Dup' and 'ParentOf' classes from
+  'Control.Monad.Trans.Region'.
+
+
+0.2
+
+(Released on Thu Jan 7 14:14:15 UTC 2010)
+
+* Renamed module Control.Monad.Trans.Region.Internal to
+  Control.Monad.Trans.Region.Unsafe.
+
+* Export only the unsafe things from Control.Monad.Trans.Region.Unsafe.
+
+* Removed resource type from RegionT which prevented opening different
+  types of resources in the same region.
+
+
+0.1.0.1
+
+(Released on Wed Dec 23 13:42:48 UTC 2009)
+
+* Depend on base-unicode-symbols instead of unicode-symbols.
+
+* Tested with base 4.2.
+
+
+0.1
+
+(Released on Mon Dec 21 09:46:51 UTC 2009)
+
+* Initial release.
