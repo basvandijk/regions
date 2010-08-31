@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 
 -------------------------------------------------------------------------------
 -- |
@@ -22,8 +23,13 @@ module Control.Monad.Trans.Region
 
     , TopRegion
     , runTopRegion
-    , forkTopRegion
 
+      -- ** Forking /top-level/ regions
+    , forkIOTopRegion
+    , forkOSTopRegion
+#ifdef __GLASGOW_HASKELL__
+    , forkOnIOTopRegion
+#endif
       -- * Duplication
     , Dup(dup)
 

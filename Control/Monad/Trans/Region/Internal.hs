@@ -1,4 +1,5 @@
-{-# LANGUAGE UnicodeSyntax
+{-# LANGUAGE CPP
+           , UnicodeSyntax
            , NoImplicitPrelude
            , GeneralizedNewtypeDeriving
            , RankNTypes
@@ -37,7 +38,12 @@ module Control.Monad.Trans.Region.Internal
     , TopRegion
     , runTopRegion
 
-    , forkTopRegion
+      -- ** Forking /top-level/ regions
+    , forkIOTopRegion
+    , forkOSTopRegion
+#ifdef __GLASGOW_HASKELL__
+    , forkOnIOTopRegion
+#endif
 
       -- * Duplication
     , Dup(dup)
@@ -55,7 +61,6 @@ module Control.Monad.Trans.Region.Internal
 
 -- from base:
 import Prelude             ( (+), (-), seq, fromInteger )
-import Control.Concurrent  ( forkIO, ThreadId )
 import Control.Applicative ( Applicative, Alternative )
 import Control.Monad       ( Monad, return, (>>=), fail
                            , (>>), when, forM_
@@ -69,6 +74,11 @@ import Data.Int            ( Int )
 import Data.IORef          ( IORef, newIORef
                            , readIORef, modifyIORef, atomicModifyIORef
                            )
+import Control.Concurrent  ( forkIO, forkOS, ThreadId )
+#ifdef __GLASGOW_HASKELL__
+import GHC.Conc            ( forkOnIO )
+#endif
+
 -- from MonadCatchIO-transformers:
 import Control.Monad.CatchIO ( MonadCatchIO, block, bracket )
 
@@ -175,6 +185,11 @@ Note that: @runTopRegion = 'runRegionT'@
 runTopRegion ∷ (∀ s. TopRegion s α) → IO α
 runTopRegion = runRegionT
 
+
+--------------------------------------------------------------------------------
+-- ** Forking /top-level/ regions
+--------------------------------------------------------------------------------
+
 {-| Return a region which executes the given /top-level/ region in a new thread.
 
 Note that the forked region has the same type variable @s@ as the resulting
@@ -194,12 +209,30 @@ Note that the @regionalHndl@ and all other resources opened in the current
 thread are closed only when the current thread or the forked thread terminates
 whichever comes /last/.
 -}
-forkTopRegion ∷ MonadIO pr ⇒ TopRegion s () → RegionT s pr ThreadId
-forkTopRegion m = RegionT $ ReaderT $ \hsIORef → liftIO $ do
-                    hs ← readIORef hsIORef
-                    block $ do
-                      forM_ hs $ \(Handle _ refCntIORef) → increment refCntIORef
-                      forkIO $ runRegionWith hs m
+forkIOTopRegion ∷ MonadIO pr ⇒ TopRegion s () → RegionT s pr ThreadId
+forkIOTopRegion = forkTopRegion forkIO
+
+-- | Like 'forkIOTopRegion' but internally uses 'forkOS'.
+forkOSTopRegion ∷ MonadIO pr ⇒ TopRegion s () → RegionT s pr ThreadId
+forkOSTopRegion = forkTopRegion forkOS
+
+#ifdef __GLASGOW_HASKELL__
+-- | Like 'forkIOTopRegion' but internally uses 'forkOnIO'.
+forkOnIOTopRegion ∷ MonadIO pr ⇒ Int → TopRegion s () → RegionT s pr ThreadId
+forkOnIOTopRegion = forkTopRegion ∘ forkOnIO
+#endif
+
+forkTopRegion ∷ MonadIO pr
+              ⇒ (IO () → IO ThreadId)
+              → (TopRegion s () → RegionT s pr ThreadId)
+forkTopRegion doFork = \m →
+    RegionT $ ReaderT $ \hsIORef → liftIO $ do
+      hs ← readIORef hsIORef
+      block $ do
+        forM_ hs $ \(Handle _ refCntIORef) → increment refCntIORef
+        doFork $ runRegionWith hs m
+
+--------------------------------------------------------------------------------
 
 -- | Internally used function that actually runs the region on the given list of
 -- opened resources.
