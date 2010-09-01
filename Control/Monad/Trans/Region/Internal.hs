@@ -199,9 +199,9 @@ region can also be referenced in the forked region.
 For example the following is allowed:
 
 @
-runRegionT $ do
+'runRegionT' $ do
   regionalHndl <- open resource
-  threadId <- forkTopRegion $ doSomethingWith regionalHndl
+  threadId <- 'forkIOTopRegion' $ doSomethingWith regionalHndl
   doSomethingElseWith regionalHndl
 @
 
