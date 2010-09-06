@@ -174,7 +174,7 @@ runRegionT m = runRegionWith [] m
 
  * directly executed in 'IO' by 'runTopRegion',
 
- * concurrently executed in a new thread by 'forkTopRegion'.
+ * concurrently executed in a new thread by 'forkIOTopRegion'.
 -}
 type TopRegion s = RegionT s IO
 
