@@ -120,7 +120,7 @@ newtype RegionT s (pr ∷ * → *) α = RegionT
              , MonadCatchIO
              )
 
-data Handle = Handle CloseAction (IORef RefCnt)
+data Handle = Handle !CloseAction !(IORef RefCnt)
 
 -- | An 'IO' computation that closes or finalizes a resource. For example
 -- @hClose@ or @free@.
