@@ -1,3 +1,12 @@
+0.7.0.1
+
+(Released on: Sat Sep 11 14:17:48 UTC 2010)
+
+* Added strictness flags to the arguments of the Handle data constructor
+
+* Fix haddock link
+
+
 0.7
 
 (Released on: Wed Sep 1 20:11:41 UTC 2010)
