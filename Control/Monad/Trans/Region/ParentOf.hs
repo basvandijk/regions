@@ -25,23 +25,20 @@ import Control.Monad ( Monad )
 -- from regions:
 import Control.Monad.Trans.Region.Internal ( RegionT )
 
-
-{-| The @ParentOf@ class declares the parent/child relationship between regions.
-
-A region is the parent of another region if they're either equivalent like:
+{-| The @ParentOf@ class defines the parent/child relationship between regions.
+The constraint
 
 @
-RegionT ps pr  \`ParentOf\`  RegionT ps pr
+    pr \`ParentOf\` cr
 @
 
-or if it is the parent of the parent of the child like:
+is satisfied if and only if @cr@ is a sequence of zero or more @'RegionT' s@
+(with varying @s@) applied to @pr@, in other words, if @cr@ is an (improper)
+nested subregion of @pr@.
 
-@
-RegionT ps ppr \`ParentOf\` RegionT cs
-                              (RegionT pcs
-                                (RegionT ppcs
-                                  (RegionT ps ppr)))
-@
+The only purpose of the non-exported classes 'Private' and 'Private2' are to
+make it impossible to add new instances of 'ParentOf', effectively turning it
+into a /closed class/.
 -}
 class (Monad pr, Monad cr) ⇒ pr `ParentOf` cr
 
