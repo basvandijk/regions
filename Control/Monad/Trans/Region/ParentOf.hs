@@ -1,11 +1,10 @@
 {-# LANGUAGE UnicodeSyntax
-           , NoImplicitPrelude
            , KindSignatures
            , MultiParamTypeClasses
-           , FunctionalDependencies
            , UndecidableInstances
            , FlexibleInstances
            , OverlappingInstances
+           , TypeFamilies
   #-}
 
 -------------------------------------------------------------------------------
@@ -18,9 +17,6 @@
 --------------------------------------------------------------------------------
 
 module Control.Monad.Trans.Region.ParentOf ( ParentOf ) where
-
--- from base:
-import Control.Monad ( Monad )
 
 -- from regions:
 import Control.Monad.Trans.Region.Internal ( RegionT )
@@ -36,32 +32,23 @@ is satisfied if and only if @cr@ is a sequence of zero or more @'RegionT' s@
 (with varying @s@) applied to @pr@, in other words, if @cr@ is an (improper)
 nested subregion of @pr@.
 
-The only purpose of the non-exported classes 'Private' and 'Private2' are to
+The only purpose of the non-exported class 'Private' is to
 make it impossible to add new instances of 'ParentOf', effectively turning it
 into a /closed class/.
 -}
-class (Monad pr, Monad cr) ⇒ pr `ParentOf` cr
 
-instance Monad r ⇒ ParentOf r r
+-- Implementation note:
+-- Since ghc-6.10.x we have type equality constraints, so we no longer need
+-- Oleg's TypeCast tricks.
+-- The implementation uses type-level recursion, so it is no surprise we need
+-- UndecidableInstances.
 
-instance ( Monad cr
-         , cr `TypeCast2` RegionT s pcr
-         , pr `ParentOf` pcr
-         )
-         ⇒ ParentOf pr cr
+class (Private pr cr) => ParentOf (pr :: * -> *) (cr :: * -> *)
 
+instance Private m m => ParentOf m m
+instance (Private pr cr, cr ~ RegionT s pcr, ParentOf pr pcr) => ParentOf pr cr
 
---------------------------------------------------------------------------------
--- Type casting
---------------------------------------------------------------------------------
+class Private pr cr
 
-class TypeCast2     (a ∷ * → *) (b ∷ * → *) |   a → b,   b → a
-class TypeCast2'  t (a ∷ * → *) (b ∷ * → *) | t a → b, t b → a
-class TypeCast2'' t (a ∷ * → *) (b ∷ * → *) | t a → b, t b → a
-
-instance TypeCast2'  () a b ⇒ TypeCast2    a b
-instance TypeCast2'' t  a b ⇒ TypeCast2' t a b
-instance TypeCast2'' () a a
-
-
--- The End ---------------------------------------------------------------------
+instance Private (RegionT s m) (RegionT s m)
+instance (Private pr cr, cr ~ RegionT s pcr, Private pr pcr) => Private pr cr
