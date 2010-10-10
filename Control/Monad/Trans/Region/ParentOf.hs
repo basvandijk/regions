@@ -44,12 +44,11 @@ into a /closed class/.
 -- The implementation uses type-level recursion, so it is no surprise we need
 -- UndecidableInstances.
 
-class (Private pr cr) => ParentOf (pr :: * -> *) (cr :: * -> *)
+class (Private pr, Private cr) ⇒ ParentOf (pr ∷ * → *) (cr ∷ * → *)
 
-instance Private m m => ParentOf m m
-instance (Private pr cr, cr ~ RegionT s pcr, ParentOf pr pcr) => ParentOf pr cr
+instance (Private pr) ⇒ ParentOf pr pr
+instance (cr ~ RegionT s pcr, ParentOf pr pcr) ⇒ ParentOf pr cr
 
 class Private r
 
-instance Private (RegionT s m) (RegionT s m)
-instance (Private pr cr, cr ~ RegionT s pcr, Private pr pcr) => Private pr cr
+instance Private (RegionT s pr)
