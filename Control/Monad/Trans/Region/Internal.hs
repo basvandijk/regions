@@ -128,6 +128,8 @@ newtype RegionT s (pr ∷ * → *) α = RegionT
              , MonadCatchIO
              )
 
+-- | A 'Finalizer' together with its reference count which defines how many
+-- times it has been duplicated to a parent region.
 data RefCountedFinalizer = RefCountedFinalizer !Finalizer !(IORef RefCnt)
 
 -- | An 'IO' computation that closes or finalizes a resource. For example
@@ -148,9 +150,26 @@ type RefCnt = Int
 -- current region terminates it is performed when the parent region terminates.
 newtype FinalizerHandle (r ∷ * → *) = FinalizerHandle RefCountedFinalizer
 
--- | Register the 'Finalizer' in the region. When the region terminates all
--- registered finalizers will be perfomed if they're not duplicated to a
--- parent region.
+{-| Register the 'Finalizer' in the region. When the region terminates all
+registered finalizers will be perfomed if they're not duplicated to a parent
+region.
+
+Note that finalizers are run in LIFO order (Last In First Out). So executing the following:
+
+@
+runRegionT $ do
+  _ <- onExit $ putStrLn \"finalizer 1\"
+  _ <- onExit $ putStrLn \"finalizer 2\"
+  return ()
+@
+
+yields:
+
+@
+finalizer 2
+finalizer 1
+@
+-}
 onExit ∷ MonadIO pr ⇒ Finalizer → RegionT s pr (FinalizerHandle (RegionT s pr))
 onExit finalizer = RegionT $ ReaderT $ \hsIORef → liftIO $ do
                      refCntIORef ← newIORef 1
@@ -244,6 +263,9 @@ forkTopRegion doFork = \m →
         forM_ hs $ \(RefCountedFinalizer _ refCntIORef) → increment refCntIORef
         doFork $ runRegionWith hs m
 
+
+--------------------------------------------------------------------------------
+-- Actually running regions
 --------------------------------------------------------------------------------
 
 -- | Internally used function that actually runs the region on the given list of
