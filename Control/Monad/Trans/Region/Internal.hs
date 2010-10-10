@@ -28,8 +28,8 @@ module Control.Monad.Trans.Region.Internal
       RegionT
 
       -- * Close handles
-    , CloseAction
-    , CloseHandle
+    , Finalizer
+    , FinalizerHandle
     , onExit
 
       -- * Running regions
@@ -107,7 +107,7 @@ usually the region which is running this region. However when you are running a
 'TopRegion' the parent region will be 'IO'.
 -}
 newtype RegionT s (pr ∷ * → *) α = RegionT
-    { unRegionT ∷ ReaderT (IORef [Handle]) pr α }
+    { unRegionT ∷ ReaderT (IORef [RefCountedFinalizer]) pr α }
 
     deriving ( Functor
              , Applicative
@@ -120,11 +120,11 @@ newtype RegionT s (pr ∷ * → *) α = RegionT
              , MonadCatchIO
              )
 
-data Handle = Handle !CloseAction !(IORef RefCnt)
+data RefCountedFinalizer = RefCountedFinalizer !Finalizer !(IORef RefCnt)
 
 -- | An 'IO' computation that closes or finalizes a resource. For example
 -- @hClose@ or @free@.
-type CloseAction = IO ()
+type Finalizer = IO ()
 
 type RefCnt = Int
 
@@ -133,19 +133,22 @@ type RefCnt = Int
 -- * Close handles
 --------------------------------------------------------------------------------
 
--- | A handle to a 'CloseAction' that allows you to duplicate the action to a
--- parent region using 'dup'.
-newtype CloseHandle (r ∷ * → *) = CloseHandle Handle
+-- | A handle to a 'Finalizer' that allows you to duplicate it to a parent
+-- region using 'dup'.
+--
+-- Duplicating a finalizer means that instead of it being performed when the
+-- current region terminates it is performed when the parent region terminates.
+newtype FinalizerHandle (r ∷ * → *) = FinalizerHandle RefCountedFinalizer
 
--- | Register the 'CloseAction' in the region. When the region terminates all
--- registered close actions will be perfomed if they're not duplicated to a
+-- | Register the 'Finalizer' in the region. When the region terminates all
+-- registered finalizers will be perfomed if they're not duplicated to a
 -- parent region.
-onExit ∷ MonadIO pr ⇒ CloseAction → RegionT s pr (CloseHandle (RegionT s pr))
-onExit closeAction = RegionT $ ReaderT $ \hsIORef → liftIO $ do
-                       refCntIORef ← newIORef 1
-                       let h = Handle closeAction refCntIORef
-                       modifyIORef hsIORef (h:)
-                       return $ CloseHandle h
+onExit ∷ MonadIO pr ⇒ Finalizer → RegionT s pr (FinalizerHandle (RegionT s pr))
+onExit finalizer = RegionT $ ReaderT $ \hsIORef → liftIO $ do
+                     refCntIORef ← newIORef 1
+                     let h = RefCountedFinalizer finalizer refCntIORef
+                     modifyIORef hsIORef (h:)
+                     return $ FinalizerHandle h
 
 
 --------------------------------------------------------------------------------
@@ -170,7 +173,8 @@ Note that it is possible to run a region inside another region.
 runRegionT ∷ MonadCatchIO pr ⇒ (∀ s. RegionT s pr α) → pr α
 runRegionT m = runRegionWith [] m
 
-{-| A region which has 'IO' as its parent region which enables it to be:
+{-| A handy type synonym for a region which has 'IO' as its parent region which
+enables it to be:
 
  * directly executed in 'IO' by 'runTopRegion',
 
@@ -229,7 +233,7 @@ forkTopRegion doFork = \m →
     RegionT $ ReaderT $ \hsIORef → liftIO $ do
       hs ← readIORef hsIORef
       block $ do
-        forM_ hs $ \(Handle _ refCntIORef) → increment refCntIORef
+        forM_ hs $ \(RefCountedFinalizer _ refCntIORef) → increment refCntIORef
         doFork $ runRegionWith hs m
 
 --------------------------------------------------------------------------------
@@ -237,7 +241,7 @@ forkTopRegion doFork = \m →
 -- | Internally used function that actually runs the region on the given list of
 -- opened resources.
 runRegionWith ∷ ∀ s pr α. MonadCatchIO pr
-              ⇒ [Handle] → RegionT s pr α → pr α
+              ⇒ [RefCountedFinalizer] → RegionT s pr α → pr α
 runRegionWith hs r = bracket (liftIO before)
                              (liftIO ∘ after)
                              (runReaderT $ unRegionT r)
@@ -245,9 +249,9 @@ runRegionWith hs r = bracket (liftIO before)
       before = newIORef hs
       after hsIORef = do
         hs' ← readIORef hsIORef
-        forM_ hs' $ \(Handle closeAction refCntIORef) → do
+        forM_ hs' $ \(RefCountedFinalizer finalizer refCntIORef) → do
           refCnt ← decrement refCntIORef
-          when (refCnt ≡ 0) closeAction
+          when (refCnt ≡ 0) finalizer
 
 -- | Internally used function that atomically decrements the reference count
 -- that is stored in the given @IORef@. The function returns the decremented
@@ -319,12 +323,12 @@ class Dup α where
         → RegionT cs (RegionT ps ppr)
               (α (RegionT ps ppr))
 
-instance Dup CloseHandle where
-    dup (CloseHandle h@(Handle _ refCntIORef)) =
+instance Dup FinalizerHandle where
+    dup (FinalizerHandle h@(RefCountedFinalizer _ refCntIORef)) =
       lift $ RegionT $ ReaderT $ \hsIORef → liftIO $ block $ do
         increment refCntIORef
         modifyIORef hsIORef (h:)
-        return $ CloseHandle h
+        return $ FinalizerHandle h
 
 
 --------------------------------------------------------------------------------
