@@ -33,7 +33,8 @@ module Control.Monad.Trans.Region
       -- * Duplication
     , Dup(dup)
 
-    , module Control.Monad.Trans.Region.ParentOf
+      -- * Parent / child relation between regions
+    , ParentOf
 
       -- * Handy functions for writing monadic instances
     , liftCallCC
@@ -42,4 +43,4 @@ module Control.Monad.Trans.Region
     ) where
 
 import Control.Monad.Trans.Region.Internal
-import Control.Monad.Trans.Region.ParentOf
+
