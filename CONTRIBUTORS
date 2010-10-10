@@ -1,0 +1,6 @@
+* Oleg Kiselyov and Chung-chieh Shan
+  For coming up with the original idea of "lightweight monadic regions".
+
+* Ben Franksen
+  For rewriting the overly complicated ParentOf class and related instances
+  to something really clean and simple exploiting TypeFamilies.
