@@ -36,10 +36,10 @@ source-repository head
 
 Library
   GHC-Options: -Wall
-  build-depends: base                      >= 4       && < 4.3
-               , base-unicode-symbols      >= 0.1.1   && < 0.3
-               , transformers              >= 0.2     && < 0.3
-               , MonadCatchIO-transformers >= 0.2     && < 0.3
+  build-depends: base                      >= 4     && < 4.3
+               , base-unicode-symbols      >= 0.1.1 && < 0.3
+               , transformers              >= 0.2   && < 0.3
+               , MonadCatchIO-transformers >= 0.2   && < 0.3
   exposed-modules: Control.Monad.Trans.Region
                    Control.Monad.Trans.Region.ParentOf
                    Control.Monad.Trans.Region.OnExit
