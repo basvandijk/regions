@@ -53,7 +53,7 @@ module Control.Monad.Trans.Region.Internal
     , Dup(dup)
 
       -- * Parent / child relation between regions
-    , ParentOf
+    , AncestorRegion
 
       -- * Handy functions for writing monadic instances
     , liftCallCC
@@ -364,35 +364,35 @@ instance Dup FinalizerHandle where
 -- * Parent / child relation between regions
 --------------------------------------------------------------------------------
 
-{-| The @ParentOf@ class defines the parent / child relationship between regions.
+{-| The @AncestorRegion@ class defines the parent / child relationship between regions.
 The constraint
 
 @
-    pr \`ParentOf\` cr
+    pr \`AncestorRegion\` cr
 @
 
 is satisfied if and only if @cr@ is a sequence of zero or more @'RegionT' s@
 (with varying @s@) applied to @pr@, in other words, if @cr@ is an (improper)
 nested subregion of @pr@.
 
-The class constraint @InternalParentOf pr cr@ serves two purposes. First, the
-instances of @InternalParentOf@ do the type-level recursion that implements
+The class constraint @InternalAncestorRegion pr cr@ serves two purposes. First, the
+instances of @InternalAncestorRegion@ do the type-level recursion that implements
 the relation specified above. Second, since it is not exported, user code cannot
-add new instances of 'ParentOf' (as these would have to be made instances of
-@InternalParentOf@, too), effectively turning it into a /closed class/.
+add new instances of 'AncestorRegion' (as these would have to be made instances of
+@InternalAncestorRegion@, too), effectively turning it into a /closed class/.
 -}
 
 -- The implementation uses type-level recursion, so it is no surprise we need
 -- UndecidableInstances.
 
-class (InternalParentOf pr cr) => ParentOf pr cr
+class (InternalAncestorRegion pr cr) => AncestorRegion pr cr
 
-instance (InternalParentOf pr cr) => ParentOf pr cr
+instance (InternalAncestorRegion pr cr) => AncestorRegion pr cr
 
-class InternalParentOf (pr :: * -> *) (cr :: * -> *)
+class InternalAncestorRegion (pr :: * -> *) (cr :: * -> *)
 
-instance InternalParentOf (RegionT s m) (RegionT s m)
-instance (InternalParentOf pr cr) => InternalParentOf pr (RegionT s cr)
+instance InternalAncestorRegion (RegionT s m) (RegionT s m)
+instance (InternalAncestorRegion pr cr) => InternalAncestorRegion pr (RegionT s cr)
 
 
 --------------------------------------------------------------------------------

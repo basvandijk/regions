@@ -34,7 +34,7 @@ module Control.Monad.Trans.Region
     , Dup(dup)
 
       -- * Parent / child relation between regions
-    , ParentOf
+    , AncestorRegion
 
       -- * Handy functions for writing monadic instances
     , liftCallCC

@@ -44,7 +44,7 @@ import Data.Function.Unicode ( (∘) )
 import Control.Monad.IO.Class ( MonadIO, liftIO )
 
 -- from ourselves:
-import Control.Monad.Trans.Region ( RegionT, ParentOf )
+import Control.Monad.Trans.Region ( RegionT, AncestorRegion )
 
 
 --------------------------------------------------------------------------------
@@ -75,18 +75,18 @@ newRegionRef ∷ MonadIO pr
 newRegionRef = liftM RegionRef ∘ liftIO ∘ newIORef
 
 -- | Read the value of the given regional reference.
-readRegionRef ∷ (pr `ParentOf` cr, MonadIO cr)
+readRegionRef ∷ (pr `AncestorRegion` cr, MonadIO cr)
               ⇒ RegionRef pr α → cr α
 readRegionRef = liftIO ∘ readIORef ∘ unRegionRef
 
 -- | Write a new value into the given regional reference.
-writeRegionRef ∷ (pr `ParentOf` cr, MonadIO cr)
+writeRegionRef ∷ (pr `AncestorRegion` cr, MonadIO cr)
                ⇒ RegionRef pr α → α → cr ()
 writeRegionRef ref x = liftIO $ writeIORef (unRegionRef ref) x
 
 -- | Mutate the contents of the given regional reference using the given
 -- function.
-modifyRegionRef ∷ (pr `ParentOf` cr, MonadIO cr)
+modifyRegionRef ∷ (pr `AncestorRegion` cr, MonadIO cr)
                 ⇒ RegionRef pr α → (α → α) → cr ()
 modifyRegionRef ref f = liftIO $ modifyIORef (unRegionRef ref) f
 
@@ -97,7 +97,7 @@ This function is useful for using a regional reference in a safe way in a
 multithreaded program. If you only have one regional reference, then using
 @atomicModifyRegionRef@ to access and modify it will prevent race conditions.
 -}
-atomicModifyRegionRef ∷ (pr `ParentOf` cr, MonadIO cr)
+atomicModifyRegionRef ∷ (pr `AncestorRegion` cr, MonadIO cr)
                       ⇒ RegionRef pr α → (α → (α, β)) → cr β
 atomicModifyRegionRef ref f = liftIO $ atomicModifyIORef (unRegionRef ref) f
 
