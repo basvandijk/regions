@@ -375,27 +375,24 @@ is satisfied if and only if @cr@ is a sequence of zero or more @'RegionT' s@
 (with varying @s@) applied to @pr@, in other words, if @cr@ is an (improper)
 nested subregion of @pr@.
 
-The only purpose of the non-exported class 'Region' is to
-make it impossible to add new instances of 'ParentOf', effectively turning it
-into a /closed class/:
-
-@
-    class Region (r :: * -> *)
-    instance Region (RegionT s m)
-@
+The class constraint @InternalParentOf pr cr@ serves two purposes. First, the
+instances of @InternalParentOf@ do the type-level recursion that implements
+the relation specified above. Second, since it is not exported, user code cannot
+add new instances of 'ParentOf' (as these would have to be made instances of
+@InternalParentOf@, too), effectively turning it into a /closed class/.
 -}
 
 -- The implementation uses type-level recursion, so it is no surprise we need
 -- UndecidableInstances.
 
-class (Region pr, Region cr) ⇒ ParentOf pr cr
+class (InternalParentOf pr cr) => ParentOf pr cr
 
-instance ParentOf (RegionT s m) (RegionT s m)
-instance ParentOf pr cr ⇒ ParentOf pr (RegionT s cr)
+instance (InternalParentOf pr cr) => ParentOf pr cr
 
-class Region (r ∷ * → *)
+class InternalParentOf (pr :: * -> *) (cr :: * -> *)
 
-instance Region (RegionT s m)
+instance InternalParentOf (RegionT s m) (RegionT s m)
+instance (InternalParentOf pr cr) => InternalParentOf pr (RegionT s cr)
 
 
 --------------------------------------------------------------------------------
