@@ -33,7 +33,7 @@ module Control.Monad.Trans.Region
       -- * Duplication
     , Dup(dup)
 
-      -- * Parent / child relation between regions
+      -- * Ancestor relation between regions
     , AncestorRegion
 
       -- * Handy functions for writing monadic instances

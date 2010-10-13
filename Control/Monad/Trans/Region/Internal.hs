@@ -52,7 +52,7 @@ module Control.Monad.Trans.Region.Internal
       -- * Duplication
     , Dup(dup)
 
-      -- * Parent / child relation between regions
+      -- * Ancestor relation between regions
     , AncestorRegion
 
       -- * Handy functions for writing monadic instances
@@ -361,7 +361,7 @@ instance Dup FinalizerHandle where
 
 
 --------------------------------------------------------------------------------
--- * Parent / child relation between regions
+-- * Ancestor relation between regions
 --------------------------------------------------------------------------------
 
 {-| The @AncestorRegion@ class defines the parent / child relationship between regions.
@@ -385,14 +385,14 @@ add new instances of 'AncestorRegion' (as these would have to be made instances 
 -- The implementation uses type-level recursion, so it is no surprise we need
 -- UndecidableInstances.
 
-class (InternalAncestorRegion pr cr) => AncestorRegion pr cr
+class (InternalAncestorRegion pr cr) ⇒ AncestorRegion pr cr
 
-instance (InternalAncestorRegion pr cr) => AncestorRegion pr cr
+instance (InternalAncestorRegion pr cr) ⇒ AncestorRegion pr cr
 
-class InternalAncestorRegion (pr :: * -> *) (cr :: * -> *)
+class InternalAncestorRegion (pr ∷ * → *) (cr ∷ * → *)
 
 instance InternalAncestorRegion (RegionT s m) (RegionT s m)
-instance (InternalAncestorRegion pr cr) => InternalAncestorRegion pr (RegionT s cr)
+instance (InternalAncestorRegion pr cr) ⇒ InternalAncestorRegion pr (RegionT s cr)
 
 
 --------------------------------------------------------------------------------
