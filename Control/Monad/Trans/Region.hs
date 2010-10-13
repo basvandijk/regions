@@ -29,6 +29,7 @@ module Control.Monad.Trans.Region
 
       -- * Ancestor relation between regions
     , AncestorRegion
+    , RootRegion
 
       -- * Handy functions for writing monadic instances
     , liftCallCC

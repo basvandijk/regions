@@ -4,6 +4,7 @@
            , GeneralizedNewtypeDeriving
            , RankNTypes
            , KindSignatures
+           , EmptyDataDecls
            , MultiParamTypeClasses
            , UndecidableInstances
            , FlexibleInstances
@@ -54,6 +55,7 @@ module Control.Monad.Trans.Region.Internal
 
       -- * Ancestor relation between regions
     , AncestorRegion
+    , RootRegion
 
       -- * Handy functions for writing monadic instances
     , liftCallCC
@@ -393,6 +395,20 @@ class InternalAncestorRegion (pr ∷ * → *) (cr ∷ * → *)
 
 instance InternalAncestorRegion (RegionT s m) (RegionT s m)
 instance (InternalAncestorRegion pr cr) ⇒ InternalAncestorRegion pr (RegionT s cr)
+
+--------------------------------------------------------------------------------
+
+-- | The @RootRegion@ is the ancestor of any region.
+--
+-- It's primary purpose is to tag regional handles which don't have an
+-- associated finalizer. For example the standard file handles @stdin@, @stdout@
+-- and @stderr@ which are opened on program startup and which shouldn't be
+-- closed when a region terminates. Another example is the @nullPtr@ which is a
+-- memory pointer which doesn't point to any allocated memory so doesn't need to
+-- be freed.
+data RootRegion α
+
+instance InternalAncestorRegion RootRegion (RegionT s m)
 
 
 --------------------------------------------------------------------------------
