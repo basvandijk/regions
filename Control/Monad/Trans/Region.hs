@@ -24,12 +24,6 @@ module Control.Monad.Trans.Region
     , TopRegion
     , runTopRegion
 
-      -- ** Forking /top-level/ regions
-    , forkIOTopRegion
-    , forkOSTopRegion
-#ifdef __GLASGOW_HASKELL__
-    , forkOnIOTopRegion
-#endif
       -- * Duplication
     , Dup(dup)
 
