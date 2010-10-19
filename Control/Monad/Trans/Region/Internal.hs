@@ -1,14 +1,14 @@
-{-# LANGUAGE CPP
-           , UnicodeSyntax
-           , NoImplicitPrelude
-           , GeneralizedNewtypeDeriving
-           , RankNTypes
-           , KindSignatures
-           , EmptyDataDecls
-           , MultiParamTypeClasses
-           , UndecidableInstances
-           , FlexibleInstances
-           , OverlappingInstances
+{-# LANGUAGE CPP                        -- For portability.
+           , UnicodeSyntax              -- Makes it look so nice.
+           , NoImplicitPrelude          -- I like to be fully explicit.
+           , GeneralizedNewtypeDeriving -- I'm lazy.
+           , RankNTypes                 -- Provides the essential type-safety.
+           , KindSignatures             -- To help the type-checker.
+           , EmptyDataDecls             -- For the RootRegion type.
+           , MultiParamTypeClasses      -- For the AncestorRegion class.
+           , UndecidableInstances       -- )
+           , FlexibleInstances          -- ) For the AncestorRegion instances.
+           , OverlappingInstances       -- )
   #-}
 
 -------------------------------------------------------------------------------
@@ -32,7 +32,7 @@ module Control.Monad.Trans.Region.Internal
     ( -- * Regions
       RegionT
 
-      -- * Close handles
+      -- * Registering finalizers
     , Finalizer
     , FinalizerHandle
     , onExit
@@ -40,14 +40,11 @@ module Control.Monad.Trans.Region.Internal
       -- * Running regions
     , runRegionT
 
-    , TopRegion
-    , runTopRegion
-
-      -- ** Forking /top-level/ regions
-    , forkIOTopRegion
-    , forkOSTopRegion
+      -- ** Forking regions
+    , forkIO
+    , forkOS
 #ifdef __GLASGOW_HASKELL__
-    , forkOnIOTopRegion
+    , forkOnIO
 #endif
 
       -- * Duplication
@@ -71,49 +68,51 @@ module Control.Monad.Trans.Region.Internal
 -- from base:
 import Prelude             ( (+), (-), seq, fromInteger )
 import Control.Applicative ( Applicative, Alternative )
-import Control.Monad       ( Monad, return, (>>=), fail
-                           , (>>), when, forM_
-                           , MonadPlus
-                           )
+import Control.Monad       ( Monad, return, (>>=), fail , (>>), when, forM_ , MonadPlus )
 import Control.Monad.Fix   ( MonadFix )
 import System.IO           ( IO )
 import Data.Function       ( ($) )
 import Data.Functor        ( Functor )
 import Data.Int            ( Int )
-import Data.IORef          ( IORef, newIORef
-                           , readIORef, modifyIORef, atomicModifyIORef
-                           )
-import Control.Concurrent  ( forkIO, forkOS, ThreadId )
+import Data.IORef          ( IORef, newIORef, readIORef, modifyIORef, atomicModifyIORef )
+import Control.Concurrent  ( ThreadId )
+import qualified Control.Concurrent ( forkIO, forkOS )
 #ifdef __GLASGOW_HASKELL__
-import GHC.Conc            ( forkOnIO )
+import qualified GHC.Conc  ( forkOnIO )
 #endif
 
 -- from MonadCatchIO-transformers:
-import Control.Monad.CatchIO ( MonadCatchIO, block, bracket )
+import Control.Monad.CatchIO ( MonadCatchIO, bracket )
 
 -- from transformers:
 import Control.Monad.Trans.Class ( MonadTrans, lift )
 import Control.Monad.IO.Class    ( MonadIO, liftIO )
 
 import qualified Control.Monad.Trans.Reader as R ( liftCallCC, liftCatch )
-import           Control.Monad.Trans.Reader      ( ReaderT(ReaderT)
-                                                 , runReaderT, mapReaderT
-                                                 )
+import Control.Monad.Trans.Reader ( ReaderT(ReaderT), runReaderT, mapReaderT )
+
 -- from base-unicode-symbols:
 import Data.Eq.Unicode       ( (≡) )
 import Data.Function.Unicode ( (∘) )
+
+-- Handling the new asynchronous exceptions API in base-4.3:
+#if MIN_VERSION_base(4,3,0)
+import Control.Exception ( mask_ )
+#else
+import Control.Exception ( block )
+mask_ ∷ IO α → IO α
+mask_ = block
+#endif
 
 
 --------------------------------------------------------------------------------
 -- * Regions
 --------------------------------------------------------------------------------
 
-{-| A monad transformer in which scarce resources can be opened
-which are automatically closed when the region terminates.
-
-Note that regions can be nested. @pr@ (for parent region) is a monad which is
-usually the region which is running this region. However when you are running a
-'TopRegion' the parent region will be 'IO'.
+{-| A monad transformer in which scarce resources can be opened. When the region
+terminates, all opened resources will be closed automatically. It's a type error
+to return an opened resource from the region. The latter ensures no I/O with
+closed resources is possible.
 -}
 newtype RegionT s (pr ∷ * → *) α = RegionT
     { unRegionT ∷ ReaderT (IORef [RefCountedFinalizer]) pr α }
@@ -129,8 +128,8 @@ newtype RegionT s (pr ∷ * → *) α = RegionT
              , MonadCatchIO
              )
 
--- | A 'Finalizer' together with its reference count which defines how many
--- times it has been duplicated to a parent region.
+-- | A 'Finalizer' paired with its reference count which defines how many times
+-- it has been registered in some region.
 data RefCountedFinalizer = RefCountedFinalizer !Finalizer !(IORef RefCnt)
 
 -- | An 'IO' computation that closes or finalizes a resource. For example
@@ -141,7 +140,7 @@ type RefCnt = Int
 
 
 --------------------------------------------------------------------------------
--- * Close handles
+-- * Registering finalizers
 --------------------------------------------------------------------------------
 
 -- | A handle to a 'Finalizer' that allows you to duplicate it to a parent
@@ -201,28 +200,29 @@ Note that it is possible to run a region inside another region.
 runRegionT ∷ MonadCatchIO pr ⇒ (∀ s. RegionT s pr α) → pr α
 runRegionT m = runRegionWith [] m
 
-{-| A handy type synonym for a region which has 'IO' as its parent region which
-enables it to be:
-
- * directly executed in 'IO' by 'runTopRegion',
-
- * concurrently executed in a new thread by 'forkIOTopRegion'.
--}
-type TopRegion s = RegionT s IO
-
-{-| Convenience funtion for running a /top-level/ region in 'IO'.
-
-Note that: @runTopRegion = 'runRegionT'@
--}
-runTopRegion ∷ (∀ s. TopRegion s α) → IO α
-runTopRegion = runRegionT
+runRegionWith ∷ ∀ s pr α. MonadCatchIO pr
+              ⇒ [RefCountedFinalizer] → RegionT s pr α → pr α
+runRegionWith hs r = bracket (liftIO $ newIORef hs)
+                             (liftIO ∘ after)
+                             (runReaderT $ unRegionT r)
+    where
+      after hsIORef = do
+        hs' ← readIORef hsIORef
+        forM_ hs' $ \(RefCountedFinalizer finalizer refCntIORef) → do
+          refCnt ← decrement refCntIORef
+          when (refCnt ≡ 0) finalizer
+          where
+            decrement ∷ IORef RefCnt → IO RefCnt
+            decrement ioRef = atomicModifyIORef ioRef $ \refCnt →
+                                let refCnt' = refCnt - 1
+                                in (refCnt', refCnt')
 
 
 --------------------------------------------------------------------------------
--- ** Forking /top-level/ regions
+-- ** Forking regions
 --------------------------------------------------------------------------------
 
-{-| Return a region which executes the given /top-level/ region in a new thread.
+{-| Return a region which executes the given region in a new thread.
 
 Note that the forked region has the same type variable @s@ as the resulting
 region. This means that all values which can be referenced in the resulting
@@ -233,7 +233,7 @@ For example the following is allowed:
 @
 'runRegionT' $ do
   regionalHndl <- open resource
-  threadId <- 'forkIOTopRegion' $ doSomethingWith regionalHndl
+  threadId <- Region.'forkIO' $ doSomethingWith regionalHndl
   doSomethingElseWith regionalHndl
 @
 
@@ -241,59 +241,29 @@ Note that the @regionalHndl@ and all other resources opened in the current
 thread are closed only when the current thread or the forked thread terminates
 whichever comes /last/.
 -}
-forkIOTopRegion ∷ MonadIO pr ⇒ TopRegion s () → RegionT s pr ThreadId
-forkIOTopRegion = forkTopRegion forkIO
+forkIO ∷ MonadIO pr ⇒ RegionT s IO () → RegionT s pr ThreadId
+forkIO = fork Control.Concurrent.forkIO
 
--- | Like 'forkIOTopRegion' but internally uses 'forkOS'.
-forkOSTopRegion ∷ MonadIO pr ⇒ TopRegion s () → RegionT s pr ThreadId
-forkOSTopRegion = forkTopRegion forkOS
+-- | Like 'forkIO' but internally uses @Control.Concurrent.'Control.Concurrent.forkOS'@.
+forkOS ∷ MonadIO pr ⇒ RegionT s IO () → RegionT s pr ThreadId
+forkOS = fork Control.Concurrent.forkOS
 
 #ifdef __GLASGOW_HASKELL__
--- | Like 'forkIOTopRegion' but internally uses 'forkOnIO'.
-forkOnIOTopRegion ∷ MonadIO pr ⇒ Int → TopRegion s () → RegionT s pr ThreadId
-forkOnIOTopRegion = forkTopRegion ∘ forkOnIO
+-- | Like 'forkIO' but internally uses @GHC.Conc.'GHC.Conc.forkOnIO'@.
+forkOnIO ∷ MonadIO pr ⇒ Int → RegionT s IO () → RegionT s pr ThreadId
+forkOnIO = fork ∘ GHC.Conc.forkOnIO
 #endif
 
-forkTopRegion ∷ MonadIO pr
-              ⇒ (IO () → IO ThreadId)
-              → (TopRegion s () → RegionT s pr ThreadId)
-forkTopRegion doFork = \m →
+fork ∷ MonadIO pr
+     ⇒ (IO () → IO ThreadId)
+     → (RegionT s IO () → RegionT s pr ThreadId)
+fork doFork = \m →
     RegionT $ ReaderT $ \hsIORef → liftIO $ do
       hs ← readIORef hsIORef
-      block $ do
+      mask_ $ do
         forM_ hs $ \(RefCountedFinalizer _ refCntIORef) → increment refCntIORef
         doFork $ runRegionWith hs m
 
-
---------------------------------------------------------------------------------
--- Actually running regions
---------------------------------------------------------------------------------
-
--- | Internally used function that actually runs the region on the given list of
--- opened resources.
-runRegionWith ∷ ∀ s pr α. MonadCatchIO pr
-              ⇒ [RefCountedFinalizer] → RegionT s pr α → pr α
-runRegionWith hs r = bracket (liftIO before)
-                             (liftIO ∘ after)
-                             (runReaderT $ unRegionT r)
-    where
-      before = newIORef hs
-      after hsIORef = do
-        hs' ← readIORef hsIORef
-        forM_ hs' $ \(RefCountedFinalizer finalizer refCntIORef) → do
-          refCnt ← decrement refCntIORef
-          when (refCnt ≡ 0) finalizer
-
--- | Internally used function that atomically decrements the reference count
--- that is stored in the given @IORef@. The function returns the decremented
--- reference count.
-decrement ∷ IORef RefCnt → IO RefCnt
-decrement ioRef = do atomicModifyIORef ioRef $ \refCnt →
-                       let refCnt' = refCnt - 1
-                       in (refCnt', refCnt')
-
--- | Internally used function that atomically increments the reference count that
--- is stored in the given @IORef@.
 increment ∷ IORef RefCnt → IO ()
 increment ioRef = do refCnt' ← atomicModifyIORef ioRef $ \refCnt →
                                  let refCnt' = refCnt + 1
@@ -356,7 +326,7 @@ class Dup α where
 
 instance Dup FinalizerHandle where
     dup (FinalizerHandle h@(RefCountedFinalizer _ refCntIORef)) =
-      lift $ RegionT $ ReaderT $ \hsIORef → liftIO $ block $ do
+      lift $ RegionT $ ReaderT $ \hsIORef → liftIO $ mask_ $ do
         increment refCntIORef
         modifyIORef hsIORef (h:)
         return $ FinalizerHandle h
@@ -366,14 +336,20 @@ instance Dup FinalizerHandle where
 -- * Ancestor relation between regions
 --------------------------------------------------------------------------------
 
-{-| The @AncestorRegion@ class defines the parent / child relationship between regions.
+{-| The @AncestorRegion@ class is used to relate the region in which a resource
+was opened to the region in which it is used. Take the following operation from
+the @safer-file-handles@ package as an example:
+
+@hFileSize :: (pr \`AncestorRegion\` cr, MonadIO cr) => RegionalFileHandle ioMode pr -> cr Integer@
+
+The @AncestorRegion@ class defines the parent / child relationship between regions.
 The constraint
 
 @
     pr \`AncestorRegion\` cr
 @
 
-is satisfied if and only if @cr@ is a sequence of zero or more @'RegionT' s@
+is satisfied if and only if @cr@ is a sequence of zero or more \"@'RegionT' s@\"
 (with varying @s@) applied to @pr@, in other words, if @cr@ is an (improper)
 nested subregion of @pr@.
 

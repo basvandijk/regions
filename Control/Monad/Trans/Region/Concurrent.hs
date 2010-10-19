@@ -7,16 +7,21 @@
 -- License     :  BSD3 (see the file LICENSE)
 -- Maintainer  :  Bas van Dijk <v.dijk.bas@gmail.com>
 --
--- Forking /top-level/ regions
+-- Concurrently executing regions.
+--
+-- This module exports functions with equivalent names from @Control.Concurrent@
+-- and @GHC.Conc@. May I suggest you import this module qualified as in:
+--
+-- @import qualified Control.Monad.Trans.Region.Concurrent as Region@
 --
 --------------------------------------------------------------------------------
 
 module Control.Monad.Trans.Region.Concurrent
-    ( forkIOTopRegion
-    , forkOSTopRegion
+    ( forkIO
+    , forkOS
 #ifdef __GLASGOW_HASKELL__
-    , forkOnIOTopRegion
+    , forkOnIO
 #endif
     ) where
 
-import Control.Monad.Trans.Region.Internal
+import Control.Monad.Trans.Region.Internal ( forkIO, forkOS, forkOnIO )

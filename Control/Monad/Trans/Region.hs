@@ -21,9 +21,6 @@ module Control.Monad.Trans.Region
       -- * Running regions
     , runRegionT
 
-    , TopRegion
-    , runTopRegion
-
       -- * Duplication
     , Dup(dup)
 
