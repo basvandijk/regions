@@ -66,9 +66,9 @@ module Control.Monad.Trans.Region.Internal
 --------------------------------------------------------------------------------
 
 -- from base:
-import Prelude             ( (+), (-), seq, fromInteger )
+import Prelude             ( (+), (-), seq )
 import Control.Applicative ( Applicative, Alternative )
-import Control.Monad       ( Monad, return, (>>=), fail , (>>), when, forM_ , MonadPlus )
+import Control.Monad       ( Monad, return, when, forM_ , MonadPlus )
 import Control.Monad.Fix   ( MonadFix )
 import System.IO           ( IO )
 import Data.Function       ( ($) )
@@ -79,6 +79,11 @@ import Control.Concurrent  ( ThreadId )
 import qualified Control.Concurrent ( forkIO, forkOS )
 #ifdef __GLASGOW_HASKELL__
 import qualified GHC.Conc  ( forkOnIO )
+#endif
+
+#ifdef GHC_LT_7
+import Prelude       ( fromInteger )
+import Control.Monad ( (>>=), (>>), fail )
 #endif
 
 -- from MonadCatchIO-transformers:
