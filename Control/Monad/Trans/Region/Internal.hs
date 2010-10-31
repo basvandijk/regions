@@ -81,7 +81,7 @@ import qualified Control.Concurrent ( forkIO, forkOS )
 import qualified GHC.Conc  ( forkOnIO )
 #endif
 
-#ifdef GHC_LT_7
+#ifdef GHC_LT_71
 import Prelude       ( fromInteger )
 import Control.Monad ( (>>=), (>>), fail )
 #endif

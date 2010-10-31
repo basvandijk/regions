@@ -37,8 +37,8 @@ source-repository head
 Library
   GHC-Options: -Wall
 
-  if impl(ghc < 7)
-    CPP-Options: -DGHC_LT_7
+  if impl(ghc < 7.1)
+    CPP-Options: -DGHC_LT_71
 
   build-depends: base                      >= 4     && < 4.4
                , base-unicode-symbols      >= 0.1.1 && < 0.3
