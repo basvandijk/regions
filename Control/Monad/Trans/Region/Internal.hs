@@ -81,7 +81,7 @@ import qualified Control.Concurrent ( forkIO, forkOS )
 import qualified GHC.Conc  ( forkOnIO )
 #endif
 
-#ifdef GHC_LT_71
+#if __GLASGOW_HASKELL__ < 701
 import Prelude       ( fromInteger )
 import Control.Monad ( (>>=), (>>), fail )
 #endif
