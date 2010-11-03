@@ -24,4 +24,10 @@ module Control.Monad.Trans.Region.Concurrent
 #endif
     ) where
 
-import Control.Monad.Trans.Region.Internal ( forkIO, forkOS, forkOnIO )
+import Control.Monad.Trans.Region.Internal
+    ( forkIO
+    , forkOS
+#ifdef __GLASGOW_HASKELL__
+    , forkOnIO
+#endif
+    )
