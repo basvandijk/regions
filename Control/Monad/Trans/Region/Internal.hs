@@ -86,8 +86,9 @@ import Prelude       ( fromInteger )
 import Control.Monad ( (>>=), (>>), fail )
 #endif
 
--- from MonadCatchIO-transformers:
-import Control.Monad.CatchIO ( MonadCatchIO, bracket )
+-- from monad-peel:
+import Control.Monad.IO.Peel  ( MonadPeelIO )
+import Control.Exception.Peel ( bracket )
 
 -- from transformers:
 import Control.Monad.Trans.Class ( MonadTrans, lift )
@@ -130,7 +131,7 @@ newtype RegionT s (pr ∷ * → *) α = RegionT
              , MonadFix
              , MonadTrans
              , MonadIO
-             , MonadCatchIO
+             , MonadPeelIO
              )
 
 -- | A 'Finalizer' paired with its reference count which defines how many times
@@ -202,10 +203,10 @@ be returned from this function. (Note the similarity with the @ST@ monad.)
 
 Note that it is possible to run a region inside another region.
 -}
-runRegionT ∷ MonadCatchIO pr ⇒ (∀ s. RegionT s pr α) → pr α
+runRegionT ∷ MonadPeelIO pr ⇒ (∀ s. RegionT s pr α) → pr α
 runRegionT m = runRegionWith [] m
 
-runRegionWith ∷ ∀ s pr α. MonadCatchIO pr
+runRegionWith ∷ ∀ s pr α. MonadPeelIO pr
               ⇒ [RefCountedFinalizer] → RegionT s pr α → pr α
 runRegionWith hs r = bracket (liftIO $ newIORef hs)
                              (liftIO ∘ after)
@@ -324,7 +325,7 @@ Note that @r1hDup :: RegionalHandle (RegionT ps ppr)@
 Back in the parent region you can safely operate on @r1hDup@.
 -}
 class Dup α where
-    dup ∷ MonadCatchIO ppr
+    dup ∷ MonadPeelIO ppr
         ⇒ α (RegionT cs (RegionT ps ppr))
         → RegionT cs (RegionT ps ppr)
               (α (RegionT ps ppr))
