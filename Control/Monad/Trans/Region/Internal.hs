@@ -325,7 +325,7 @@ Note that @r1hDup :: RegionalHandle (RegionT ps ppr)@
 Back in the parent region you can safely operate on @r1hDup@.
 -}
 class Dup α where
-    dup ∷ MonadPeelIO ppr
+    dup ∷ MonadIO ppr
         ⇒ α (RegionT cs (RegionT ps ppr))
         → RegionT cs (RegionT ps ppr)
               (α (RegionT ps ppr))
