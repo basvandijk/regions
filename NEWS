@@ -1,10 +1,38 @@
+0.8
+
+(Released on: Sat Nov 6 15:56:27 UTC 2010)
+
+* Released during BelHac 2010!
+
+* Replaced ParentOf class with the more understandable,
+  easier to implement and safer AncestorRegion class.
+  (Contributed by Ben Franksen)
+
+  Also moved the class from its own module to the main:
+  Control.Monad.Trans.Region module.
+
+* Exported fork*TopRegion functions from their own dedicated module:
+  Control.Monad.Trans.Region.Concurrent.
+
+* Use MonadPeelIO instead of MonadCatchIO.
+
+* Removed TopRegion and runTopRegion and
+  renamed the fork functions accordingly.
+
+* Renamed CloseAction to Finalizer and
+  CloseHandle to FinalizerHandle.
+
+* Added the RootRegion (empty) datatype which is defined as the
+  ancestor of any region.
+
+
 0.7.0.1
 
 (Released on: Sat Sep 11 14:17:48 UTC 2010)
 
-* Added strictness flags to the arguments of the Handle data constructor
+* Added strictness flags to the arguments of the Handle data constructor.
 
-* Fix haddock link
+* Fix haddock link.
 
 
 0.7
@@ -30,7 +58,7 @@
   simpler 'onExit' function.
 
 * Renamed Control.Monad.Trans.Region.Close to
-  Control.Monad.Trans.Region.OnExit
+  Control.Monad.Trans.Region.OnExit.
 
 
 0.5
