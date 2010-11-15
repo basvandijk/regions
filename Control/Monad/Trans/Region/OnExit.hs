@@ -2,7 +2,7 @@
 
 -------------------------------------------------------------------------------
 -- |
--- Module      :  Control.Monad.Trans.Region.Unsafe
+-- Module      :  Control.Monad.Trans.Region.OnExit
 -- Copyright   :  (c) 2009-2010 Bas van Dijk
 -- License     :  BSD3 (see the file LICENSE)
 -- Maintainer  :  Bas van Dijk <v.dijk.bas@gmail.com>
