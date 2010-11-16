@@ -11,6 +11,8 @@
            , OverlappingInstances       -- )
   #-}
 
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-} -- For block and unblock
+
 -------------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Monad.Trans.Region.Internal
@@ -45,8 +47,10 @@ module Control.Monad.Trans.Region.Internal
     , forkOS
 #ifdef __GLASGOW_HASKELL__
     , forkOnIO
+#if MIN_VERSION_base(4,3,0)
+    , forkIOUnmasked
 #endif
-
+#endif
       -- * Duplication
     , Dup(dup)
 
@@ -68,7 +72,7 @@ module Control.Monad.Trans.Region.Internal
 -- from base:
 import Prelude             ( (+), (-), seq )
 import Control.Applicative ( Applicative, Alternative )
-import Control.Monad       ( Monad, return, when, forM_ , MonadPlus )
+import Control.Monad       ( Monad, return, when, forM_, MonadPlus )
 import Control.Monad.Fix   ( MonadFix )
 import System.IO           ( IO )
 import Data.Function       ( ($) )
@@ -84,6 +88,10 @@ import qualified GHC.Conc  ( forkOnIO )
 #if __GLASGOW_HASKELL__ < 701
 import Prelude       ( fromInteger )
 import Control.Monad ( (>>=), (>>), fail )
+#endif
+
+#if MIN_VERSION_base(4,3,0)
+import Control.Exception ( block, unblock )
 #endif
 
 -- from monad-peel:
@@ -263,6 +271,18 @@ forkOS = fork Control.Concurrent.forkOS
 -- | Like 'forkIO' but internally uses @GHC.Conc.'GHC.Conc.forkOnIO'@.
 forkOnIO ∷ MonadIO pr ⇒ Int → RegionT s IO () → RegionT s pr ThreadId
 forkOnIO = fork ∘ GHC.Conc.forkOnIO
+
+#if MIN_VERSION_base(4,3,0)
+-- | Like 'forkIO', but the child thread is created with asynchronous exceptions
+-- unmasked (see 'Control.Exception.mask').
+forkIOUnmasked ∷ MonadIO pr ⇒ RegionT s IO () → RegionT s pr ThreadId
+forkIOUnmasked r =
+    RegionT $ ReaderT $ \hsIORef → liftIO $ do
+      hs ← readIORef hsIORef
+      block $ do
+        forM_ hs $ \(RefCountedFinalizer _ refCntIORef) → increment refCntIORef
+        Control.Concurrent.forkIO $ runRegionWith hs $ liftIOOp_ unblock r
+#endif
 #endif
 
 fork ∷ MonadIO pr

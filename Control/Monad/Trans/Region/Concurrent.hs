@@ -21,6 +21,9 @@ module Control.Monad.Trans.Region.Concurrent
     , forkOS
 #ifdef __GLASGOW_HASKELL__
     , forkOnIO
+#if MIN_VERSION_base(4,3,0)
+    , forkIOUnmasked
+#endif
 #endif
     ) where
 
@@ -29,5 +32,8 @@ import Control.Monad.Trans.Region.Internal
     , forkOS
 #ifdef __GLASGOW_HASKELL__
     , forkOnIO
+#if MIN_VERSION_base(4,3,0)
+    , forkIOUnmasked
+#endif
 #endif
     )
