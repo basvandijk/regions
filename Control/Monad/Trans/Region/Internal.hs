@@ -87,7 +87,7 @@ import Control.Monad ( (>>=), (>>), fail )
 #endif
 
 -- from monad-peel:
-import Control.Monad.IO.Peel  ( MonadPeelIO )
+import Control.Monad.IO.Peel  ( MonadPeelIO, liftIOOp_ )
 import Control.Exception.Peel ( bracket )
 
 -- from transformers:
@@ -103,9 +103,14 @@ import Data.Function.Unicode ( (∘) )
 
 -- Handling the new asynchronous exceptions API in base-4.3:
 #if MIN_VERSION_base(4,3,0)
-import Control.Exception ( mask_ )
+import Control.Exception ( mask, mask_ )
 #else
-import Control.Exception ( block )
+import Control.Exception ( blocked, block, unblock )
+import Data.Function     ( id )
+
+mask ∷ (∀ α. (IO α → IO α) → IO β) → IO β
+mask io = blocked >>= \b → if b then io id else block $ io unblock
+
 mask_ ∷ IO α → IO α
 mask_ = block
 #endif
@@ -263,12 +268,12 @@ forkOnIO = fork ∘ GHC.Conc.forkOnIO
 fork ∷ MonadIO pr
      ⇒ (IO () → IO ThreadId)
      → (RegionT s IO () → RegionT s pr ThreadId)
-fork doFork = \m →
+fork doFork = \r →
     RegionT $ ReaderT $ \hsIORef → liftIO $ do
       hs ← readIORef hsIORef
-      mask_ $ do
+      mask $ \restore → do
         forM_ hs $ \(RefCountedFinalizer _ refCntIORef) → increment refCntIORef
-        doFork $ runRegionWith hs m
+        doFork $ runRegionWith hs $ liftIOOp_ restore r
 
 increment ∷ IORef RefCnt → IO ()
 increment ioRef = do refCnt' ← atomicModifyIORef ioRef $ \refCnt →
