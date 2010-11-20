@@ -95,8 +95,9 @@ import Control.Exception ( block, unblock )
 #endif
 
 -- from monad-peel:
-import Control.Monad.IO.Peel  ( MonadPeelIO, liftIOOp_ )
-import Control.Exception.Peel ( bracket )
+import Control.Monad.Trans.Peel  ( MonadTransPeel )
+import Control.Monad.IO.Peel     ( MonadPeelIO, liftIOOp_ )
+import Control.Exception.Peel    ( bracket )
 
 -- from transformers:
 import Control.Monad.Trans.Class ( MonadTrans, lift )
@@ -143,6 +144,7 @@ newtype RegionT s (pr ∷ * → *) α = RegionT
              , MonadPlus
              , MonadFix
              , MonadTrans
+             , MonadTransPeel
              , MonadIO
              , MonadPeelIO
              )
