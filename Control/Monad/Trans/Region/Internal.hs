@@ -136,9 +136,7 @@ terminates, all opened resources will be closed automatically. It's a type error
 to return an opened resource from the region. The latter ensures no I/O with
 closed resources is possible.
 -}
-newtype RegionT s (pr ∷ * → *) α = RegionT
-    { unRegionT ∷ ReaderT (IORef [RefCountedFinalizer]) pr α }
-
+newtype RegionT s pr α = RegionT (ReaderT (IORef [RefCountedFinalizer]) pr α)
     deriving ( Functor
              , Applicative
              , Alternative
@@ -150,6 +148,9 @@ newtype RegionT s (pr ∷ * → *) α = RegionT
              , MonadIO
              , MonadPeelIO
              )
+
+unRegionT ∷ RegionT s pr α → ReaderT (IORef [RefCountedFinalizer]) pr α
+unRegionT (RegionT r) = r
 
 -- | A 'Finalizer' paired with its reference count which defines how many times
 -- it has been registered in some region.
