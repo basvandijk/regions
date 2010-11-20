@@ -6,12 +6,14 @@
            , KindSignatures             -- To help the type-checker.
            , EmptyDataDecls             -- For the RootRegion type.
            , MultiParamTypeClasses      -- For the AncestorRegion class.
-           , UndecidableInstances       -- )
-           , FlexibleInstances          -- ) For the AncestorRegion instances.
-           , OverlappingInstances       -- )
+           , UndecidableInstances       -- For the AncestorRegion instances.
+           , FlexibleInstances          -- ,,          ,,          ,,
+           , OverlappingInstances       -- ,,          ,,          ,,
   #-}
 
+#if MIN_VERSION_base(4,3,0)
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-} -- For block and unblock
+#endif
 
 -------------------------------------------------------------------------------
 -- |
@@ -154,7 +156,7 @@ newtype RegionT s (pr ∷ * → *) α = RegionT
 data RefCountedFinalizer = RefCountedFinalizer !Finalizer !(IORef RefCnt)
 
 -- | An 'IO' computation that closes or finalizes a resource. For example
--- @hClose@ or @free@.
+-- @hClose someHandle@ or @free somePtr@.
 type Finalizer = IO ()
 
 type RefCnt = Int
@@ -164,11 +166,12 @@ type RefCnt = Int
 -- * Registering finalizers
 --------------------------------------------------------------------------------
 
--- | A handle to a 'Finalizer' that allows you to duplicate it to a parent
--- region using 'dup'.
---
--- Duplicating a finalizer means that instead of it being performed when the
--- current region terminates it is performed when the parent region terminates.
+{-| A handle to a 'Finalizer' that allows you to duplicate it to a parent region
+using 'dup'.
+
+Duplicating a finalizer means that instead of it being performed when the
+current region terminates it is performed when the parent region terminates.
+-}
 newtype FinalizerHandle (r ∷ * → *) = FinalizerHandle RefCountedFinalizer
 
 {-| Register the 'Finalizer' in the region. When the region terminates all
@@ -407,14 +410,14 @@ instance (InternalAncestorRegion pr cr) ⇒ InternalAncestorRegion pr (RegionT s
 
 --------------------------------------------------------------------------------
 
--- | The @RootRegion@ is the ancestor of any region.
---
--- It's primary purpose is to tag regional handles which don't have an
--- associated finalizer. For example the standard file handles @stdin@, @stdout@
--- and @stderr@ which are opened on program startup and which shouldn't be
--- closed when a region terminates. Another example is the @nullPtr@ which is a
--- memory pointer which doesn't point to any allocated memory so doesn't need to
--- be freed.
+{-| The @RootRegion@ is the ancestor of any region.
+
+It's primary purpose is to tag regional handles which don't have an associated
+finalizer. For example the standard file handles @stdin@, @stdout@ and @stderr@
+which are opened on program startup and which shouldn't be closed when a region
+terminates. Another example is the @nullPtr@ which is a memory pointer which
+doesn't point to any allocated memory so doesn't need to be freed.
+-}
 data RootRegion α
 
 instance InternalAncestorRegion RootRegion (RegionT s m)
