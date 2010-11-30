@@ -119,7 +119,7 @@ import Control.Exception ( mask, mask_ )
 import Control.Exception ( blocked, block, unblock )
 import Data.Function     ( id )
 
-mask ∷ (∀ α. (IO α → IO α) → IO β) → IO β
+mask ∷ ((∀ α. IO α → IO α) → IO β) → IO β
 mask io = blocked >>= \b → if b then io id else block $ io unblock
 
 mask_ ∷ IO α → IO α
