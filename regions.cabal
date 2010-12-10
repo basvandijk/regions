@@ -24,8 +24,8 @@ description:
   .
   <http://okmij.org/ftp/Haskell/regions.html#light-weight>
   .
-  Also see the @regions-monadsfd@ and @regions-monadstf@ packages which provide
-  instances for the classes in the respected monads packages.
+  Also see the @regions-mtl@ and @regions-monadstf@ packages which provide
+  instances for the classes in the respected monad transformers packages.
   .
   For an example on how to use this library see the @safer-file-handles@,
   @usb-safe@ or @regional-pointers@ packages.
