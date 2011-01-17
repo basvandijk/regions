@@ -93,7 +93,7 @@ import Control.Monad       ( (>>=), (>>), fail )
 #endif
 
 #if MIN_VERSION_base(4,3,0)
-import Control.Exception ( block, unblock )
+import Control.Exception   ( block, unblock )
 #endif
 
 -- from monad-peel:
@@ -157,7 +157,7 @@ unRegionT (RegionT r) = r
 data RefCountedFinalizer = RefCountedFinalizer !Finalizer !(IORef RefCnt)
 
 -- | An 'IO' computation that closes or finalizes a resource. For example
--- @hClose someHandle@ or @free somePtr@.
+-- \"@hClose someHandle@\" or \"@free somePtr@\".
 type Finalizer = IO ()
 
 type RefCnt = Int
