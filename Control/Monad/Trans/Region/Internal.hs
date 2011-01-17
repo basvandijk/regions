@@ -87,9 +87,9 @@ import qualified Control.Concurrent ( forkIO, forkOS )
 import qualified GHC.Conc  ( forkOnIO )
 #endif
 
-#if __GLASGOW_HASKELL__ < 701
-import Prelude       ( fromInteger )
-import Control.Monad ( (>>=), (>>), fail )
+#if __GLASGOW_HASKELL__ < 700
+import Prelude             ( fromInteger )
+import Control.Monad       ( (>>=), (>>), fail )
 #endif
 
 #if MIN_VERSION_base(4,3,0)
