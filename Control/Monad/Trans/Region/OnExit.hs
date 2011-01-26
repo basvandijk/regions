@@ -1,5 +1,3 @@
-{-# LANGUAGE UnicodeSyntax #-}
-
 -------------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Monad.Trans.Region.OnExit
