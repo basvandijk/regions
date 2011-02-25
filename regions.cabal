@@ -39,7 +39,7 @@ Library
   build-depends: base                      >= 4     && < 4.4
                , base-unicode-symbols      >= 0.1.1 && < 0.3
                , transformers              >= 0.2   && < 0.3
-               , monad-peel                >= 0.1   && < 0.2
+               , monad-control             >= 0.2   && < 0.3
   exposed-modules: Control.Monad.Trans.Region
                    Control.Monad.Trans.Region.OnExit
                    Data.RegionRef

@@ -63,21 +63,22 @@ import Prelude             ( (+), (-), seq )
 import Control.Applicative ( Applicative, Alternative )
 import Control.Monad       ( Monad, return, when, forM_, MonadPlus )
 import Control.Monad.Fix   ( MonadFix )
+import Control.Exception   ( bracket )
 import System.IO           ( IO )
 import Data.Function       ( ($) )
 import Data.Functor        ( Functor )
 import Data.Int            ( Int )
-import Data.IORef          ( IORef, newIORef, readIORef, modifyIORef, atomicModifyIORef )
-
+import Data.IORef          ( IORef, newIORef
+                           , readIORef, modifyIORef, atomicModifyIORef
+                           )
 #if __GLASGOW_HASKELL__ < 700
 import Prelude             ( fromInteger )
 import Control.Monad       ( (>>=), (>>), fail )
 #endif
 
--- from monad-peel:
-import Control.Monad.Trans.Peel  ( MonadTransPeel )
-import Control.Monad.IO.Peel     ( MonadPeelIO )
-import Control.Exception.Peel    ( bracket )
+-- from monad-control:
+import Control.Monad.Trans.Control ( MonadTransControl )
+import Control.Monad.IO.Control    ( MonadControlIO, controlIO )
 
 -- from transformers:
 import Control.Monad.Trans.Class ( MonadTrans, lift )
@@ -117,9 +118,9 @@ newtype RegionT s pr α = RegionT (ReaderT (IORef [RefCountedFinalizer]) pr α)
              , MonadPlus
              , MonadFix
              , MonadTrans
-             , MonadTransPeel
+             , MonadTransControl
              , MonadIO
-             , MonadPeelIO
+             , MonadControlIO
              )
 
 unRegionT ∷ RegionT s pr α → ReaderT (IORef [RefCountedFinalizer]) pr α
@@ -195,11 +196,11 @@ be returned from this function. (Note the similarity with the @ST@ monad.)
 
 Note that it is possible to run a region inside another region.
 -}
-runRegionT ∷ MonadPeelIO pr ⇒ (∀ s. RegionT s pr α) → pr α
-runRegionT r = bracket (liftIO $ newIORef [])
-                       (liftIO ∘ after)
-                       (runReaderT $ unRegionT r)
+runRegionT ∷ MonadControlIO pr ⇒ (∀ s. RegionT s pr α) → pr α
+runRegionT r = bracketIO before after thing
     where
+      before = newIORef []
+      thing hsIORef = runReaderT (unRegionT r) hsIORef
       after hsIORef = do
         hs' ← readIORef hsIORef
         forM_ hs' $ \(RefCountedFinalizer finalizer refCntIORef) → do
@@ -210,6 +211,10 @@ runRegionT r = bracket (liftIO $ newIORef [])
             decrement ioRef = atomicModifyIORef ioRef $ \refCnt →
                                 let refCnt' = refCnt - 1
                                 in (refCnt', refCnt')
+
+bracketIO ∷ MonadControlIO m ⇒ IO α → (α → IO ()) → (α → m β) → m β
+bracketIO before after thing = controlIO $ \runInIO →
+                                 bracket before after (runInIO ∘ thing)
 
 
 --------------------------------------------------------------------------------
