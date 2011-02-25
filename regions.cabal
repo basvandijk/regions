@@ -1,5 +1,5 @@
 name:          regions
-version:       0.8.1
+version:       0.9
 cabal-version: >=1.6
 build-type:    Simple
 license:       BSD3
@@ -41,7 +41,6 @@ Library
                , transformers              >= 0.2   && < 0.3
                , monad-peel                >= 0.1   && < 0.2
   exposed-modules: Control.Monad.Trans.Region
-                   Control.Monad.Trans.Region.Concurrent
                    Control.Monad.Trans.Region.OnExit
                    Data.RegionRef
   other-modules:   Control.Monad.Trans.Region.Internal

@@ -11,10 +11,6 @@
            , OverlappingInstances       -- ,,          ,,          ,,
   #-}
 
-#if MIN_VERSION_base(4,3,0)
-{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-} -- For block and unblock
-#endif
-
 -------------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Monad.Trans.Region.Internal
@@ -44,15 +40,6 @@ module Control.Monad.Trans.Region.Internal
       -- * Running regions
     , runRegionT
 
-      -- ** Forking regions
-    , forkIO
-    , forkOS
-#ifdef __GLASGOW_HASKELL__
-    , forkOnIO
-#if MIN_VERSION_base(4,3,0)
-    , forkIOUnmasked
-#endif
-#endif
       -- * Duplication
     , Dup(dup)
 
@@ -81,24 +68,15 @@ import Data.Function       ( ($) )
 import Data.Functor        ( Functor )
 import Data.Int            ( Int )
 import Data.IORef          ( IORef, newIORef, readIORef, modifyIORef, atomicModifyIORef )
-import Control.Concurrent  ( ThreadId )
-import qualified Control.Concurrent ( forkIO, forkOS )
-#ifdef __GLASGOW_HASKELL__
-import qualified GHC.Conc  ( forkOnIO )
-#endif
 
 #if __GLASGOW_HASKELL__ < 700
 import Prelude             ( fromInteger )
 import Control.Monad       ( (>>=), (>>), fail )
 #endif
 
-#if MIN_VERSION_base(4,3,0)
-import Control.Exception   ( block, unblock )
-#endif
-
 -- from monad-peel:
 import Control.Monad.Trans.Peel  ( MonadTransPeel )
-import Control.Monad.IO.Peel     ( MonadPeelIO, liftIOOp_ )
+import Control.Monad.IO.Peel     ( MonadPeelIO )
 import Control.Exception.Peel    ( bracket )
 
 -- from transformers:
@@ -114,14 +92,9 @@ import Data.Function.Unicode ( (∘) )
 
 -- Handling the new asynchronous exceptions API in base-4.3:
 #if MIN_VERSION_base(4,3,0)
-import Control.Exception ( mask, mask_ )
+import Control.Exception ( mask_ )
 #else
-import Control.Exception ( blocked, block, unblock )
-import Data.Function     ( id )
-
-mask ∷ ((∀ α. IO α → IO α) → IO β) → IO β
-mask io = blocked >>= \b → if b then io id else block $ io unblock
-
+import Control.Exception ( block )
 mask_ ∷ IO α → IO α
 mask_ = block
 #endif
@@ -223,13 +196,9 @@ be returned from this function. (Note the similarity with the @ST@ monad.)
 Note that it is possible to run a region inside another region.
 -}
 runRegionT ∷ MonadPeelIO pr ⇒ (∀ s. RegionT s pr α) → pr α
-runRegionT m = runRegionWith [] m
-
-runRegionWith ∷ ∀ s pr α. MonadPeelIO pr
-              ⇒ [RefCountedFinalizer] → RegionT s pr α → pr α
-runRegionWith hs r = bracket (liftIO $ newIORef hs)
-                             (liftIO ∘ after)
-                             (runReaderT $ unRegionT r)
+runRegionT r = bracket (liftIO $ newIORef [])
+                       (liftIO ∘ after)
+                       (runReaderT $ unRegionT r)
     where
       after hsIORef = do
         hs' ← readIORef hsIORef
@@ -244,76 +213,11 @@ runRegionWith hs r = bracket (liftIO $ newIORef hs)
 
 
 --------------------------------------------------------------------------------
--- ** Forking regions
---------------------------------------------------------------------------------
-
-{-| Return a region which executes the given region in a new thread.
-
-Note that the forked region has the same type variable @s@ as the resulting
-region. This means that all values which can be referenced in the resulting
-region can also be referenced in the forked region.
-
-For example the following is allowed:
-
-@
-'runRegionT' $ do
-  regionalHndl <- open resource
-  threadId <- Region.'forkIO' $ doSomethingWith regionalHndl
-  doSomethingElseWith regionalHndl
-@
-
-Note that the @regionalHndl@ and all other resources opened in the current
-thread are closed only when the current thread or the forked thread terminates
-whichever comes /last/.
--}
-forkIO ∷ MonadIO pr ⇒ RegionT s IO () → RegionT s pr ThreadId
-forkIO = fork Control.Concurrent.forkIO
-
--- | Like 'forkIO' but internally uses @Control.Concurrent.'Control.Concurrent.forkOS'@.
-forkOS ∷ MonadIO pr ⇒ RegionT s IO () → RegionT s pr ThreadId
-forkOS = fork Control.Concurrent.forkOS
-
-#ifdef __GLASGOW_HASKELL__
--- | Like 'forkIO' but internally uses @GHC.Conc.'GHC.Conc.forkOnIO'@.
-forkOnIO ∷ MonadIO pr ⇒ Int → RegionT s IO () → RegionT s pr ThreadId
-forkOnIO = fork ∘ GHC.Conc.forkOnIO
-
-#if MIN_VERSION_base(4,3,0)
--- | Like 'forkIO', but the child thread is created with asynchronous exceptions
--- unmasked (see 'Control.Exception.mask').
-forkIOUnmasked ∷ MonadIO pr ⇒ RegionT s IO () → RegionT s pr ThreadId
-forkIOUnmasked r =
-    RegionT $ ReaderT $ \hsIORef → liftIO $ do
-      hs ← readIORef hsIORef
-      block $ do
-        forM_ hs $ \(RefCountedFinalizer _ refCntIORef) → increment refCntIORef
-        Control.Concurrent.forkIO $ runRegionWith hs $ liftIOOp_ unblock r
-#endif
-#endif
-
-fork ∷ MonadIO pr
-     ⇒ (IO () → IO ThreadId)
-     → (RegionT s IO () → RegionT s pr ThreadId)
-fork doFork = \r →
-    RegionT $ ReaderT $ \hsIORef → liftIO $ do
-      hs ← readIORef hsIORef
-      mask $ \restore → do
-        forM_ hs $ \(RefCountedFinalizer _ refCntIORef) → increment refCntIORef
-        doFork $ runRegionWith hs $ liftIOOp_ restore r
-
-increment ∷ IORef RefCnt → IO ()
-increment ioRef = do refCnt' ← atomicModifyIORef ioRef $ \refCnt →
-                                 let refCnt' = refCnt + 1
-                                 in (refCnt', refCnt')
-                     refCnt' `seq` return ()
-
-
---------------------------------------------------------------------------------
 -- * Duplication
 --------------------------------------------------------------------------------
 
-{-| Duplicate an @&#945;@ in the parent region. This @&#945;@ will usually be
-some type of regional handle.
+{-| Duplicate an @h@ in the parent region. This @h@ will usually be some type of
+regional handle.
 
 For example, suppose you run the following region:
 
@@ -355,18 +259,29 @@ Note that @r1hDup :: RegionalHandle (RegionT ps ppr)@
 
 Back in the parent region you can safely operate on @r1hDup@.
 -}
-class Dup α where
+class Dup h where
     dup ∷ MonadIO ppr
-        ⇒ α (RegionT cs (RegionT ps ppr))
-        → RegionT cs (RegionT ps ppr)
-              (α (RegionT ps ppr))
+        ⇒ h (RegionT cs (RegionT ps ppr))
+        →    RegionT cs (RegionT ps ppr)
+                     (h (RegionT ps ppr))
 
 instance Dup FinalizerHandle where
-    dup (FinalizerHandle h@(RefCountedFinalizer _ refCntIORef)) =
-      lift $ RegionT $ ReaderT $ \hsIORef → liftIO $ mask_ $ do
-        increment refCntIORef
-        modifyIORef hsIORef (h:)
-        return $ FinalizerHandle h
+    dup = lift ∘ copy
+
+copy ∷ MonadIO pr
+     ⇒ FinalizerHandle r
+     → RegionT s pr (FinalizerHandle (RegionT s pr))
+copy (FinalizerHandle h@(RefCountedFinalizer _ refCntIORef)) =
+  RegionT $ ReaderT $ \hsIORef → liftIO $ mask_ $ do
+    increment refCntIORef
+    modifyIORef hsIORef (h:)
+    return $ FinalizerHandle h
+
+increment ∷ IORef RefCnt → IO ()
+increment ioRef = do refCnt' ← atomicModifyIORef ioRef $ \refCnt →
+                                 let refCnt' = refCnt + 1
+                                 in (refCnt', refCnt')
+                     refCnt' `seq` return ()
 
 
 --------------------------------------------------------------------------------
