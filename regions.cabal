@@ -42,5 +42,4 @@ Library
                , monad-control             >= 0.2   && < 0.3
   exposed-modules: Control.Monad.Trans.Region
                    Control.Monad.Trans.Region.OnExit
-                   Data.RegionRef
   other-modules:   Control.Monad.Trans.Region.Internal
