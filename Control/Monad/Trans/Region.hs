@@ -24,9 +24,15 @@ module Control.Monad.Trans.Region
 
       -- * Ancestor relation between regions
     , AncestorRegion
+
+      -- * Special regions
+      -- ** The root region
     , RootRegion
 
-      -- * Handy functions for writing monadic instances
+      -- ** Local regions
+    , LocalRegion, Local
+
+      -- * Utilities for writing monadic instances
     , liftCallCC
     , mapRegionT
     , liftCatch

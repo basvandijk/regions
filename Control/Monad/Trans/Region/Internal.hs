@@ -45,9 +45,15 @@ module Control.Monad.Trans.Region.Internal
 
       -- * Ancestor relation between regions
     , AncestorRegion
+
+      -- * Special regions
+      -- ** The root region
     , RootRegion
 
-      -- * Handy functions for writing monadic instances
+      -- ** Local regions
+    , LocalRegion, Local, unsafeStripLocal
+
+      -- * Utilities for writing monadic instances
     , liftCallCC
     , mapRegionT
     , liftCatch
@@ -329,6 +335,9 @@ class InternalAncestorRegion (pr ∷ * → *) (cr ∷ * → *)
 instance InternalAncestorRegion (RegionT s m) (RegionT s m)
 instance (InternalAncestorRegion pr cr) ⇒ InternalAncestorRegion pr (RegionT s cr)
 
+
+--------------------------------------------------------------------------------
+-- * The root region
 --------------------------------------------------------------------------------
 
 {-| The @RootRegion@ is the ancestor of any region.
@@ -345,7 +354,56 @@ instance InternalAncestorRegion RootRegion (RegionT s m)
 
 
 --------------------------------------------------------------------------------
--- * Handy functions for writing monadic instances
+-- * Local regions
+--------------------------------------------------------------------------------
+
+{-|
+A @LocalRegion@ is used to tag regional handles which are created locally.
+
+An example is the @LocalPtr@ in the @alloca@ function from the
+@regional-pointers@ package:
+
+@
+alloca :: (Storable a, MonadControlIO pr)
+       => (forall sl. LocalPtr a ('LocalRegion' sl s) -> RegionT ('Local' s) pr b)
+       -> RegionT s pr b
+@
+
+The finalisation of the @LocalPtr@ is not performed by the @regions@ library but
+is handled locally by @alloca@ instead.
+
+The type variable @sl@, which is only quantified over the continuation, ensures
+that locally opened resources don't escape.
+-}
+data LocalRegion sl s α
+
+{-|
+A type used to tag regions in which locally created handles (handles tagged with
+'LocalRegion') can be used.
+
+Note than any handle which is created in a @RegionT (Local s)@ can be used
+outside that region (@RegionT s@) and visa versa
+(except for 'LocalRegion'-tagged handles).
+-}
+data Local s
+
+instance InternalAncestorRegion (LocalRegion sf s) (RegionT (Local s) m)
+
+instance InternalAncestorRegion (RegionT        s  m) (RegionT (Local s) m)
+instance InternalAncestorRegion (RegionT (Local s) m) (RegionT        s  m)
+
+{-|
+Convert a 'Local' region to a regular region.
+
+This function is unsafe because it allows you to use a 'LocalRegion'-tagged
+handle outside its 'Local' region.
+-}
+unsafeStripLocal ∷ RegionT (Local s) pr α → RegionT s pr α
+unsafeStripLocal = RegionT ∘  unRegionT
+
+
+--------------------------------------------------------------------------------
+-- * Utilities for writing monadic instances
 --------------------------------------------------------------------------------
 
 -- | Lift a @callCC@ operation to the new monad.
