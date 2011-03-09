@@ -1,3 +1,19 @@
+0.9
+
+(Relased on: Wed Mar 9 12:20:05 UTC 2011)
+
+* Removed Control.Monad.Trans.Region.Concurrent
+  The fork functions contained bugs which could not be fixed.
+
+* Removed Data.RegionRef
+  I always considered this module a bit of a wart.
+
+* Switch from monad-peel to monad-control.
+
+* Added support for local regions
+  Primarily needed for the alloca functions from the regional-pointers package.
+
+
 0.8.1
 
 (Released on: Mon Jan 17 22:04:15 UTC 2011)
