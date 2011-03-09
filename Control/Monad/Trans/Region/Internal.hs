@@ -84,7 +84,7 @@ import Control.Monad       ( (>>=), (>>), fail )
 
 -- from monad-control:
 import Control.Monad.Trans.Control ( MonadTransControl )
-import Control.Monad.IO.Control    ( MonadControlIO, controlIO )
+import Control.Monad.IO.Control    ( MonadControlIO, liftIOOp )
 
 -- from transformers:
 import Control.Monad.Trans.Class ( MonadTrans, lift )
@@ -203,7 +203,7 @@ be returned from this function. (Note the similarity with the @ST@ monad.)
 Note that it is possible to run a region inside another region.
 -}
 runRegionT ∷ MonadControlIO pr ⇒ (∀ s. RegionT s pr α) → pr α
-runRegionT r = bracketIO before after thing
+runRegionT r = liftIOOp (bracket before after) thing
     where
       before = newIORef []
       thing hsIORef = runReaderT (unRegionT r) hsIORef
@@ -217,10 +217,6 @@ runRegionT r = bracketIO before after thing
             decrement ioRef = atomicModifyIORef ioRef $ \refCnt →
                                 let refCnt' = refCnt - 1
                                 in (refCnt', refCnt')
-
-bracketIO ∷ MonadControlIO m ⇒ IO α → (α → IO ()) → (α → m β) → m β
-bracketIO before after thing = controlIO $ \runInIO →
-                                 bracket before after (runInIO ∘ thing)
 
 
 --------------------------------------------------------------------------------
