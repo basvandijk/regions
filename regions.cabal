@@ -31,8 +31,8 @@ description:
   @usb-safe@ or @regional-pointers@ packages.
 
 source-repository head
-  Type:     darcs
-  Location: http://code.haskell.org/~basvandijk/code/regions
+  Type:     git
+  Location: git://github.com/basvandijk/regions.git
 
 Library
   GHC-Options: -Wall
