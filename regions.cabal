@@ -31,6 +31,8 @@ description:
   For an example on how to use this library see the @safer-file-handles@,
   @usb-safe@ or @regional-pointers@ packages.
 
+extra-source-files: README.markdown, NEWS, CONTRIBUTORS
+
 source-repository head
   Type:     git
   Location: git://github.com/basvandijk/regions.git
