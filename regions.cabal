@@ -7,6 +7,7 @@ license-file:  LICENSE
 copyright:     2009-2010 Bas van Dijk
 author:        Bas van Dijk
 maintainer:    Bas van Dijk <v.dijk.bas@gmail.com>
+homepage:      https://github.com/basvandijk/regions/
 bug-reports:   https://github.com/basvandijk/regions/issues
 stability:     experimental
 category:      Control, Monadic Regions
