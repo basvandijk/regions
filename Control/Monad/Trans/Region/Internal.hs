@@ -9,6 +9,7 @@
            , UndecidableInstances       -- For the AncestorRegion instances.
            , FlexibleInstances          -- ,,          ,,          ,,
            , OverlappingInstances       -- ,,          ,,          ,,
+           , FlexibleContexts           -- For unsafeLiftControl
   #-}
 
 -------------------------------------------------------------------------------
@@ -53,6 +54,13 @@ module Control.Monad.Trans.Region.Internal
       -- ** Local regions
     , LocalRegion, Local, unsafeStripLocal
 
+      -- * MonadTransControl & MonadControlIO
+    , unsafeLiftControl
+    , unsafeLiftControlIO
+    , unsafeControlIO
+    , unsafeLiftIOOp
+    , unsafeLiftIOOp_
+
       -- * Utilities for writing monadic instances
     , liftCallCC
     , mapRegionT
@@ -67,7 +75,7 @@ module Control.Monad.Trans.Region.Internal
 -- from base:
 import Prelude             ( (+), (-), seq )
 import Control.Applicative ( Applicative, Alternative )
-import Control.Monad       ( Monad, return, when, forM_, MonadPlus )
+import Control.Monad       ( Monad, return, when, forM_, join, liftM, MonadPlus,  )
 import Control.Monad.Fix   ( MonadFix )
 import Control.Exception   ( bracket )
 import System.IO           ( IO )
@@ -83,8 +91,8 @@ import Control.Monad       ( (>>=), (>>), fail )
 #endif
 
 -- from monad-control:
-import Control.Monad.Trans.Control ( MonadTransControl )
-import Control.Monad.IO.Control    ( MonadControlIO, liftIOOp )
+import Control.Monad.Trans.Control ( Run, RunInBase, liftControl )
+import Control.Monad.IO.Control    ( MonadControlIO, liftControlIO, liftIOOp )
 
 -- from transformers:
 import Control.Monad.Trans.Class ( MonadTrans, lift )
@@ -124,9 +132,7 @@ newtype RegionT s pr α = RegionT (ReaderT (IORef [RefCountedFinalizer]) pr α)
              , MonadPlus
              , MonadFix
              , MonadTrans
-             , MonadTransControl
              , MonadIO
-             , MonadControlIO
              )
 
 unRegionT ∷ RegionT s pr α → ReaderT (IORef [RefCountedFinalizer]) pr α
@@ -395,8 +401,38 @@ This function is unsafe because it allows you to use a 'LocalRegion'-tagged
 handle outside its 'Local' region.
 -}
 unsafeStripLocal ∷ RegionT (Local s) pr α → RegionT s pr α
-unsafeStripLocal = RegionT ∘  unRegionT
+unsafeStripLocal = RegionT ∘ unRegionT
 
+
+--------------------------------------------------------------------------------
+-- * MonadTransControl & MonadControlIO
+--------------------------------------------------------------------------------
+
+unsafeLiftControl ∷ Monad pr ⇒ (Run (RegionT s) → pr α) → RegionT s pr α
+unsafeLiftControl f = RegionT $ liftControl $ \runReader →
+                        f $ liftM RegionT ∘ runReader ∘ unRegionT
+
+unsafeLiftControlIO ∷ MonadControlIO pr
+                    ⇒ (RunInBase (RegionT s pr) IO → IO α) → RegionT s pr α
+unsafeLiftControlIO f = unsafeLiftControl $ \runInPr →
+                          liftControlIO $ \runInBase →
+                            let run = liftM (join ∘ lift) ∘ runInBase ∘ runInPr
+                            in f run
+
+unsafeControlIO ∷ MonadControlIO pr
+                ⇒ (RunInBase (RegionT s pr) IO → IO (RegionT s pr α))
+                 → RegionT s pr α
+unsafeControlIO = join ∘ unsafeLiftControlIO
+
+unsafeLiftIOOp ∷ MonadControlIO pr
+               ⇒ ((α → IO (RegionT s pr β)) → IO (RegionT s pr γ))
+               → ((α →     RegionT s pr β)  →     RegionT s pr γ)
+unsafeLiftIOOp f = \g → unsafeControlIO $ \runInIO → f $ runInIO ∘ g
+
+unsafeLiftIOOp_ ∷ MonadControlIO pr
+                ⇒ (IO (RegionT s pr α) → IO (RegionT s pr β))
+                → (    RegionT s pr α →      RegionT s pr β)
+unsafeLiftIOOp_ f = \m → unsafeControlIO $ \runInIO → f $ runInIO m
 
 --------------------------------------------------------------------------------
 -- * Utilities for writing monadic instances

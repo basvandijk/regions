@@ -8,6 +8,16 @@
 --
 --------------------------------------------------------------------------------
 
-module Control.Monad.Trans.Region.Unsafe ( unsafeStripLocal ) where
+module Control.Monad.Trans.Region.Unsafe
+    ( -- * Local regions
+      unsafeStripLocal
 
-import Control.Monad.Trans.Region.Internal ( unsafeStripLocal )
+      -- * MonadTransControl & MonadControlIO
+    , unsafeLiftControl
+    , unsafeLiftControlIO
+    , unsafeControlIO
+    , unsafeLiftIOOp
+    , unsafeLiftIOOp_
+    ) where
+
+import Control.Monad.Trans.Region.Internal
