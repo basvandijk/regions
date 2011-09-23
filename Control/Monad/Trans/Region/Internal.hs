@@ -55,8 +55,8 @@ module Control.Monad.Trans.Region.Internal
     , LocalRegion, Local, unsafeStripLocal
 
       -- * MonadTransControl & MonadControlIO
+    , RegionControlIO, unsafeLiftControlIO
     , unsafeLiftControl
-    , unsafeLiftControlIO
     , unsafeControlIO
     , unsafeLiftIOOp
     , unsafeLiftIOOp_
@@ -92,7 +92,7 @@ import Control.Monad       ( (>>=), (>>), fail )
 
 -- from monad-control:
 import Control.Monad.Trans.Control ( Run, RunInBase, liftControl )
-import Control.Monad.IO.Control    ( MonadControlIO, liftControlIO, liftIOOp )
+import Control.Monad.IO.Control    ( MonadControlIO, liftControlIO )
 
 -- from transformers:
 import Control.Monad.Trans.Class ( MonadTrans, lift )
@@ -208,8 +208,8 @@ be returned from this function. (Note the similarity with the @ST@ monad.)
 
 Note that it is possible to run a region inside another region.
 -}
-runRegionT ∷ MonadControlIO pr ⇒ (∀ s. RegionT s pr α) → pr α
-runRegionT r = liftIOOp (bracket before after) thing
+runRegionT ∷ RegionControlIO pr ⇒ (∀ s. RegionT s pr α) → pr α
+runRegionT r = unsafeLiftIOOp (bracket before after) thing
     where
       before = newIORef []
       thing hsIORef = runReaderT (unRegionT r) hsIORef
@@ -408,30 +408,48 @@ unsafeStripLocal = RegionT ∘ unRegionT
 -- * MonadTransControl & MonadControlIO
 --------------------------------------------------------------------------------
 
+{-|
+Regions do not have an instance for 'MonadControlIO' since that would break the
+safety guarantees. (Think about lifting 'forkIO' into a region!)
+
+However 'runRegionT' and other operations on regions do need the ability to lift
+control operations. This is where the 'RegionControlIO' class comes in. This
+class is identical to `MonadControlIO` but its 'unsafeLiftControlIO' method is
+not exported by this module. So user can't accidentally break the safety.
+
+Note that a 'RegionT' is an instance of this class. For the rest there is a
+catch-all @instance 'MonadControlIO' m => 'RegionControlIO' m@.
+-}
+class MonadIO m ⇒ RegionControlIO m where
+    unsafeLiftControlIO ∷ (RunInBase m IO → IO α) → m α
+
+instance RegionControlIO pr ⇒ RegionControlIO (RegionT s pr) where
+    unsafeLiftControlIO f =
+        unsafeLiftControl $ \runInPr →
+          unsafeLiftControlIO $ \runInBase →
+            let run = liftM (join ∘ lift) ∘ runInBase ∘ runInPr
+            in f run
+
+instance MonadControlIO m ⇒ RegionControlIO m where
+    unsafeLiftControlIO = liftControlIO
+
+--------------------------------------------------------------------------------
+
 unsafeLiftControl ∷ Monad pr ⇒ (Run (RegionT s) → pr α) → RegionT s pr α
 unsafeLiftControl f = RegionT $ liftControl $ \runReader →
                         f $ liftM RegionT ∘ runReader ∘ unRegionT
 
-unsafeLiftControlIO ∷ MonadControlIO pr
-                    ⇒ (RunInBase (RegionT s pr) IO → IO α) → RegionT s pr α
-unsafeLiftControlIO f = unsafeLiftControl $ \runInPr →
-                          liftControlIO $ \runInBase →
-                            let run = liftM (join ∘ lift) ∘ runInBase ∘ runInPr
-                            in f run
-
-unsafeControlIO ∷ MonadControlIO pr
-                ⇒ (RunInBase (RegionT s pr) IO → IO (RegionT s pr α))
-                 → RegionT s pr α
+unsafeControlIO ∷ RegionControlIO m ⇒ (RunInBase m IO → IO (m α)) → m α
 unsafeControlIO = join ∘ unsafeLiftControlIO
 
-unsafeLiftIOOp ∷ MonadControlIO pr
-               ⇒ ((α → IO (RegionT s pr β)) → IO (RegionT s pr γ))
-               → ((α →     RegionT s pr β)  →     RegionT s pr γ)
+unsafeLiftIOOp ∷ RegionControlIO m
+               ⇒ ((α → IO (m β)) → IO (m γ))
+               → ((α →     m β)  →     m γ)
 unsafeLiftIOOp f = \g → unsafeControlIO $ \runInIO → f $ runInIO ∘ g
 
-unsafeLiftIOOp_ ∷ MonadControlIO pr
-                ⇒ (IO (RegionT s pr α) → IO (RegionT s pr β))
-                → (    RegionT s pr α →      RegionT s pr β)
+unsafeLiftIOOp_ ∷ RegionControlIO m
+                ⇒ (IO (m α) → IO (m β))
+                → (    m α →      m β)
 unsafeLiftIOOp_ f = \m → unsafeControlIO $ \runInIO → f $ runInIO m
 
 --------------------------------------------------------------------------------

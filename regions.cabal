@@ -1,5 +1,5 @@
 name:          regions
-version:       0.10
+version:       0.11
 cabal-version: >=1.6
 build-type:    Simple
 license:       BSD3

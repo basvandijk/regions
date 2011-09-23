@@ -13,8 +13,8 @@ module Control.Monad.Trans.Region.Unsafe
       unsafeStripLocal
 
       -- * MonadTransControl & MonadControlIO
-    , unsafeLiftControl
     , unsafeLiftControlIO
+    , unsafeLiftControl
     , unsafeControlIO
     , unsafeLiftIOOp
     , unsafeLiftIOOp_
