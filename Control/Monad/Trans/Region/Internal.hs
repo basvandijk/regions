@@ -421,6 +421,15 @@ Note that a 'RegionT' is an instance of this class. For the rest there is a
 catch-all @instance 'MonadControlIO' m => 'RegionControlIO' m@.
 -}
 class MonadIO m ⇒ RegionControlIO m where
+    {-|
+    This function behaves like `liftControlIO` but can be used on regions.
+
+    Note that you can safely use this function to lift any control operator
+    other than `forkIO` into a region.
+
+    See the following why it's unsafe to lift `forkIO` using this function:
+    <https://github.com/basvandijk/regions/wiki/unsafeLiftControlIO>
+    -}
     unsafeLiftControlIO ∷ (RunInBase m IO → IO α) → m α
 
 instance RegionControlIO pr ⇒ RegionControlIO (RegionT s pr) where
