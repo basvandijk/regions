@@ -40,10 +40,10 @@ source-repository head
 
 Library
   GHC-Options: -Wall
-  build-depends: base                      >= 4     && < 4.5
-               , base-unicode-symbols      >= 0.1.1 && < 0.3
-               , transformers              >= 0.2   && < 0.3
-               , monad-control             >= 0.2   && < 0.3
+  build-depends: base                      >= 4     && < 4.8
+               , transformers              >= 0.2   && < 0.5
+               , transformers-base         >= 0.4   && < 0.5
+               , monad-control             >= 0.3   && < 0.4
   exposed-modules: Control.Monad.Trans.Region
                    Control.Monad.Trans.Region.OnExit
                    Control.Monad.Trans.Region.Unsafe

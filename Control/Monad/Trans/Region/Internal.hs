@@ -1,5 +1,4 @@
 {-# LANGUAGE CPP                        -- For portability.
-           , UnicodeSyntax              -- Makes it look so nice.
            , NoImplicitPrelude          -- I like to be fully explicit.
            , GeneralizedNewtypeDeriving -- I'm lazy.
            , RankNTypes                 -- Provides the essential type-safety.
@@ -10,6 +9,8 @@
            , FlexibleInstances          -- ,,          ,,          ,,
            , OverlappingInstances       -- ,,          ,,          ,,
            , FlexibleContexts           -- For unsafeLiftControl
+           , TypeFamilies
+           , FunctionalDependencies
   #-}
 
 -------------------------------------------------------------------------------
@@ -73,14 +74,15 @@ module Control.Monad.Trans.Region.Internal
 --------------------------------------------------------------------------------
 
 -- from base:
-import Prelude             ( (+), (-), seq )
+import Prelude             ( (+), (-), seq, undefined )
 import Control.Applicative ( Applicative, Alternative )
 import Control.Monad       ( Monad, return, when, forM_, join, liftM, MonadPlus,  )
 import Control.Monad.Fix   ( MonadFix )
 import Control.Exception   ( bracket )
 import System.IO           ( IO )
-import Data.Function       ( ($) )
+import Data.Function       ( ($), (.) )
 import Data.Functor        ( Functor )
+import Data.Eq             ( (==) )
 import Data.Int            ( Int )
 import Data.IORef          ( IORef, newIORef
                            , readIORef, modifyIORef, atomicModifyIORef
@@ -91,8 +93,10 @@ import Control.Monad       ( (>>=), (>>), fail )
 #endif
 
 -- from monad-control:
-import Control.Monad.Trans.Control ( Run, RunInBase, liftControl )
-import Control.Monad.IO.Control    ( MonadControlIO, liftControlIO )
+import Control.Monad.Trans.Control
+
+-- from transformers-base:
+import Control.Monad.Base
 
 -- from transformers:
 import Control.Monad.Trans.Class ( MonadTrans, lift )
@@ -101,16 +105,12 @@ import Control.Monad.IO.Class    ( MonadIO, liftIO )
 import qualified Control.Monad.Trans.Reader as R ( liftCallCC, liftCatch )
 import Control.Monad.Trans.Reader ( ReaderT(ReaderT), runReaderT, mapReaderT )
 
--- from base-unicode-symbols:
-import Data.Eq.Unicode       ( (≡) )
-import Data.Function.Unicode ( (∘) )
-
 -- Handling the new asynchronous exceptions API in base-4.3:
 #if MIN_VERSION_base(4,3,0)
 import Control.Exception ( mask_ )
 #else
 import Control.Exception ( block )
-mask_ ∷ IO α → IO α
+mask_ :: IO α -> IO α
 mask_ = block
 #endif
 
@@ -124,7 +124,7 @@ terminates, all opened resources will be closed automatically. It's a type error
 to return an opened resource from the region. The latter ensures no I/O with
 closed resources is possible.
 -}
-newtype RegionT s pr α = RegionT (ReaderT (IORef [RefCountedFinalizer]) pr α)
+newtype RegionT s pr a = RegionT (ReaderT (IORef [RefCountedFinalizer]) pr a)
     deriving ( Functor
              , Applicative
              , Alternative
@@ -135,7 +135,7 @@ newtype RegionT s pr α = RegionT (ReaderT (IORef [RefCountedFinalizer]) pr α)
              , MonadIO
              )
 
-unRegionT ∷ RegionT s pr α → ReaderT (IORef [RefCountedFinalizer]) pr α
+unRegionT :: RegionT s pr a -> ReaderT (IORef [RefCountedFinalizer]) pr a
 unRegionT (RegionT r) = r
 
 -- | A 'Finalizer' paired with its reference count which defines how many times
@@ -159,7 +159,7 @@ using 'dup'.
 Duplicating a finalizer means that instead of it being performed when the
 current region terminates it is performed when the parent region terminates.
 -}
-newtype FinalizerHandle (r ∷ * → *) = FinalizerHandle RefCountedFinalizer
+newtype FinalizerHandle (r :: * -> *) = FinalizerHandle RefCountedFinalizer
 
 {-| Register the 'Finalizer' in the region. When the region terminates all
 registered finalizers will be perfomed if they're not duplicated to a parent
@@ -181,9 +181,9 @@ finalizer 2
 finalizer 1
 @
 -}
-onExit ∷ MonadIO pr ⇒ Finalizer → RegionT s pr (FinalizerHandle (RegionT s pr))
-onExit finalizer = RegionT $ ReaderT $ \hsIORef → liftIO $ do
-                     refCntIORef ← newIORef 1
+onExit :: MonadIO pr => Finalizer -> RegionT s pr (FinalizerHandle (RegionT s pr))
+onExit finalizer = RegionT $ ReaderT $ \hsIORef -> liftIO $ do
+                     refCntIORef <- newIORef 1
                      let h = RefCountedFinalizer finalizer refCntIORef
                      modifyIORef hsIORef (h:)
                      return $ FinalizerHandle h
@@ -208,19 +208,19 @@ be returned from this function. (Note the similarity with the @ST@ monad.)
 
 Note that it is possible to run a region inside another region.
 -}
-runRegionT ∷ RegionControlIO pr ⇒ (∀ s. RegionT s pr α) → pr α
+runRegionT :: RegionBaseControl IO pr => (forall s. RegionT s pr a) -> pr a
 runRegionT r = unsafeLiftIOOp (bracket before after) thing
     where
       before = newIORef []
       thing hsIORef = runReaderT (unRegionT r) hsIORef
       after hsIORef = do
-        hs' ← readIORef hsIORef
-        forM_ hs' $ \(RefCountedFinalizer finalizer refCntIORef) → do
-          refCnt ← decrement refCntIORef
-          when (refCnt ≡ 0) finalizer
+        hs' <- readIORef hsIORef
+        forM_ hs' $ \(RefCountedFinalizer finalizer refCntIORef) -> do
+          refCnt <- decrement refCntIORef
+          when (refCnt == 0) finalizer
           where
-            decrement ∷ IORef RefCnt → IO RefCnt
-            decrement ioRef = atomicModifyIORef ioRef $ \refCnt →
+            decrement :: IORef RefCnt -> IO RefCnt
+            decrement ioRef = atomicModifyIORef ioRef $ \refCnt ->
                                 let refCnt' = refCnt - 1
                                 in (refCnt', refCnt')
 
@@ -273,27 +273,27 @@ Note that @r1hDup :: RegionalHandle (RegionT ps ppr)@
 Back in the parent region you can safely operate on @r1hDup@.
 -}
 class Dup h where
-    dup ∷ MonadIO ppr
-        ⇒ h (RegionT cs (RegionT ps ppr))
-        →    RegionT cs (RegionT ps ppr)
+    dup :: MonadIO ppr
+        => h (RegionT cs (RegionT ps ppr))
+        ->    RegionT cs (RegionT ps ppr)
                      (h (RegionT ps ppr))
 
 instance Dup FinalizerHandle where
-    dup = lift ∘ copy
+    dup = lift . copy
 
-copy ∷ MonadIO pr
-     ⇒ FinalizerHandle r
-     → RegionT s pr (FinalizerHandle (RegionT s pr))
+copy :: MonadIO pr
+     => FinalizerHandle r
+     -> RegionT s pr (FinalizerHandle (RegionT s pr))
 copy (FinalizerHandle h@(RefCountedFinalizer _ refCntIORef)) =
-  RegionT $ ReaderT $ \hsIORef → liftIO $ mask_ $ do
+  RegionT $ ReaderT $ \hsIORef -> liftIO $ mask_ $ do
     increment refCntIORef
     modifyIORef hsIORef (h:)
     return $ FinalizerHandle h
 
-increment ∷ IORef RefCnt → IO ()
-increment ioRef = do refCnt' ← atomicModifyIORef ioRef $ \refCnt →
-                                 let refCnt' = refCnt + 1
-                                 in (refCnt', refCnt')
+increment :: IORef RefCnt -> IO ()
+increment ioRef = do refCnt' <- atomicModifyIORef ioRef $ \refCnt ->
+                                  let refCnt' = refCnt + 1
+                                  in (refCnt', refCnt')
                      refCnt' `seq` return ()
 
 
@@ -328,14 +328,14 @@ add new instances of 'AncestorRegion' (as these would have to be made instances 
 -- The implementation uses type-level recursion, so it is no surprise we need
 -- UndecidableInstances.
 
-class (InternalAncestorRegion pr cr) ⇒ AncestorRegion pr cr
+class (InternalAncestorRegion pr cr) => AncestorRegion pr cr
 
-instance (InternalAncestorRegion pr cr) ⇒ AncestorRegion pr cr
+instance (InternalAncestorRegion pr cr) => AncestorRegion pr cr
 
-class InternalAncestorRegion (pr ∷ * → *) (cr ∷ * → *)
+class InternalAncestorRegion (pr :: * -> *) (cr :: * -> *)
 
 instance InternalAncestorRegion (RegionT s m) (RegionT s m)
-instance (InternalAncestorRegion pr cr) ⇒ InternalAncestorRegion pr (RegionT s cr)
+instance (InternalAncestorRegion pr cr) => InternalAncestorRegion pr (RegionT s cr)
 
 
 --------------------------------------------------------------------------------
@@ -350,7 +350,7 @@ which are opened on program startup and which shouldn't be closed when a region
 terminates. Another example is the @nullPtr@ which is a memory pointer which
 doesn't point to any allocated memory so doesn't need to be freed.
 -}
-data RootRegion α
+data RootRegion a
 
 instance InternalAncestorRegion RootRegion (RegionT s m)
 
@@ -377,7 +377,7 @@ is handled locally by @alloca@ instead.
 The type variable @sl@, which is only quantified over the continuation, ensures
 that locally opened resources don't escape.
 -}
-data LocalRegion sl s α
+data LocalRegion sl s a
 
 {-|
 A type used to tag regions in which locally created handles (handles tagged with
@@ -400,14 +400,74 @@ Convert a 'Local' region to a regular region.
 This function is unsafe because it allows you to use a 'LocalRegion'-tagged
 handle outside its 'Local' region.
 -}
-unsafeStripLocal ∷ RegionT (Local s) pr α → RegionT s pr α
-unsafeStripLocal = RegionT ∘ unRegionT
+unsafeStripLocal :: RegionT (Local s) pr a -> RegionT s pr a
+unsafeStripLocal = RegionT . unRegionT
 
 
 --------------------------------------------------------------------------------
 -- * MonadTransControl & MonadControlIO
 --------------------------------------------------------------------------------
 
+class MonadBase b m => RegionBaseControl b m | m -> b where
+    -- | Monadic state of @m@.
+    data RegionStM m :: * -> *
+
+    -- | @liftBaseWith@ is similar to 'liftIO' and 'liftBase' in that it
+    -- lifts a base computation to the constructed monad.
+    --
+    -- Instances should satisfy similar laws as the 'MonadIO' and 'MonadBase' laws:
+    --
+    -- @liftBaseWith . const . return = return@
+    --
+    -- @liftBaseWith (const (m >>= f)) = liftBaseWith (const m) >>= liftBaseWith . const . f@
+    --
+    -- The difference with 'liftBase' is that before lifting the base computation
+    -- @liftBaseWith@ captures the state of @m@. It then provides the base
+    -- computation with a 'RunInBase' function that allows running @m@
+    -- computations in the base monad on the captured state.
+    unsafeLiftBaseWith :: (RunRegionInBase m b -> b a) -> m a
+
+    -- | Construct a @m@ computation from the monadic state of @m@ that is
+    -- returned from a 'RunInBase' function.
+    --
+    -- Instances should satisfy:
+    --
+    -- @liftBaseWith (\\runInBase -> runInBase m) >>= restoreM = m@
+    unsafeRestoreM :: RegionStM m a -> m a
+
+-- | A function that runs a @m@ computation on the monadic state that was
+-- captured by 'liftBaseWith'
+--
+-- A @RunInBase m@ function yields a computation in the base monad of @m@ that
+-- returns the monadic state of @m@. This state can later be used to restore the
+-- @m@ computation using 'restoreM'.
+type RunRegionInBase m b = forall a. m a -> b (RegionStM m a)
+
+
+instance MonadBase pr => MonadBase (RegionT s pr) where
+    liftBase = RegionT . liftBase
+
+{-
+instance (RegionBaseControl b pr) => RegionBaseControl b (RegionT s pr) where
+    newtype RegionStM (RegionT s pr) = RegionStM {unRegionSt :: RegionStM pr}
+
+    unsafeLiftBaseWith (f{- :: (RegionT s pr -> b (StM (RegionT s pr) a)) -> b a-}) =
+      RegionT $
+        liftBaseWith $ \(runReader{- :: ReaderT r m a -> b StM (ReaderT r m) a-}) ->
+          f (liftM RegionStM . runReader . unRegionT)
+
+    unsafeRestoreM = restoreM . unRegionSt
+-}
+
+instance (MonadBaseControl b m) => RegionBaseControl b m where
+    newtype RegionStM m = RegionStM {unRegionStM :: StM m}
+
+    unsafeLiftBaseWith f =
+      liftBaseWith $ \runM -> f (liftM RegionStM . runM)
+
+unsafeLiftIOOp = undefined
+
+{-
 {-|
 Regions do not have an instance for 'MonadControlIO' since that would break the
 safety guarantees. (Think about lifting 'forkIO' into a region!)
@@ -420,7 +480,7 @@ not exported by this module. So user can't accidentally break the safety.
 Note that a 'RegionT' is an instance of this class. For the rest there is a
 catch-all @instance 'MonadControlIO' m => 'RegionControlIO' m@.
 -}
-class MonadIO m ⇒ RegionControlIO m where
+class MonadIO m => RegionControlIO m where
     {-|
     This function behaves like `liftControlIO` but can be used on regions.
 
@@ -430,55 +490,52 @@ class MonadIO m ⇒ RegionControlIO m where
     See the following why it's unsafe to lift `forkIO` using this function:
     <https://github.com/basvandijk/regions/wiki/unsafeLiftControlIO>
     -}
-    unsafeLiftControlIO ∷ (RunInBase m IO → IO α) → m α
+    unsafeLiftControlIO :: (RunInBase m IO -> IO a) -> m a
 
-instance RegionControlIO pr ⇒ RegionControlIO (RegionT s pr) where
+instance RegionControlIO pr => RegionControlIO (RegionT s pr) where
     unsafeLiftControlIO f =
-        unsafeLiftControl $ \runInPr →
-          unsafeLiftControlIO $ \runInBase →
-            let run = liftM (join ∘ lift) ∘ runInBase ∘ runInPr
+        unsafeLiftControl $ \runInPr ->
+          unsafeLiftControlIO $ \runInBase ->
+            let run = liftM (join . lift) . runInBase . runInPr
             in f run
 
-instance MonadControlIO m ⇒ RegionControlIO m where
+instance MonadControlIO m => RegionControlIO m where
     unsafeLiftControlIO = liftControlIO
 
 --------------------------------------------------------------------------------
 
-unsafeLiftControl ∷ Monad pr ⇒ (Run (RegionT s) → pr α) → RegionT s pr α
-unsafeLiftControl f = RegionT $ liftControl $ \runReader →
-                        f $ liftM RegionT ∘ runReader ∘ unRegionT
+unsafeLiftControl :: Monad pr => (Run (RegionT s) -> pr a) -> RegionT s pr a
+unsafeLiftControl f = RegionT $ liftControl $ \runReader ->
+                        f $ liftM RegionT . runReader . unRegionT
 
-unsafeControlIO ∷ RegionControlIO m ⇒ (RunInBase m IO → IO (m α)) → m α
-unsafeControlIO = join ∘ unsafeLiftControlIO
+unsafeControlIO :: RegionControlIO m => (RunInBase m IO -> IO (m a)) -> m a
+unsafeControlIO = join . unsafeLiftControlIO
 
-unsafeLiftIOOp ∷ RegionControlIO m
-               ⇒ ((α → IO (m β)) → IO (m γ))
-               → ((α →     m β)  →     m γ)
-unsafeLiftIOOp f = \g → unsafeControlIO $ \runInIO → f $ runInIO ∘ g
+unsafeLiftIOOp :: RegionControlIO m
+               => ((a -> IO (m b)) -> IO (m c))
+               -> ((a ->     m b)  ->     m c)
+unsafeLiftIOOp f = \g -> unsafeControlIO $ \runInIO -> f $ runInIO . g
 
-unsafeLiftIOOp_ ∷ RegionControlIO m
-                ⇒ (IO (m α) → IO (m β))
-                → (    m α →      m β)
-unsafeLiftIOOp_ f = \m → unsafeControlIO $ \runInIO → f $ runInIO m
-
+unsafeLiftIOOp_ :: RegionControlIO m
+                => (IO (m a) -> IO (m b))
+                -> (    m a ->      m b)
+unsafeLiftIOOp_ f = \m -> unsafeControlIO $ \runInIO -> f $ runInIO m
+-}
 --------------------------------------------------------------------------------
 -- * Utilities for writing monadic instances
 --------------------------------------------------------------------------------
 
 -- | Lift a @callCC@ operation to the new monad.
-liftCallCC ∷ (((α → pr β) → pr α) → pr α)
-           → (((α → RegionT s pr β) → RegionT s pr α) → RegionT s pr α)
-liftCallCC callCC = \f → RegionT $ R.liftCallCC callCC $ unRegionT ∘ f ∘ (RegionT ∘)
+liftCallCC :: (((a -> pr b) -> pr a) -> pr a)
+           -> (((a -> RegionT s pr b) -> RegionT s pr a) -> RegionT s pr a)
+liftCallCC callCC = \f -> RegionT $ R.liftCallCC callCC $ unRegionT . f . (RegionT .)
 
 -- | Transform the computation inside a region.
-mapRegionT ∷ (m α → n β)
-           → (RegionT s m α → RegionT s n β)
-mapRegionT f = RegionT ∘ mapReaderT f ∘ unRegionT
+mapRegionT :: (m a -> n b)
+           -> (RegionT s m a -> RegionT s n b)
+mapRegionT f = RegionT . mapReaderT f . unRegionT
 
 -- | Lift a @catchError@ operation to the new monad.
-liftCatch ∷ (pr α → (e → pr α) → pr α)
-          → (RegionT s pr α → (e → RegionT s pr α) → RegionT s pr α)
-liftCatch f = \m h → RegionT $ R.liftCatch f (unRegionT m) (unRegionT ∘ h)
-
-
--- The End ---------------------------------------------------------------------
+liftCatch :: (pr a -> (e -> pr a) -> pr a)
+          -> (RegionT s pr a -> (e -> RegionT s pr a) -> RegionT s pr a)
+liftCatch f = \m h -> RegionT $ R.liftCatch f (unRegionT m) (unRegionT . h)
