@@ -55,12 +55,12 @@ module Control.Monad.Trans.Region.Internal
       -- ** Local regions
     , LocalRegion, Local, unsafeStripLocal
 
-      -- * MonadTransControl & MonadControlIO
-    , RegionControlIO, unsafeLiftControlIO
-    , unsafeLiftControl
-    , unsafeControlIO
-    , unsafeLiftIOOp
-    , unsafeLiftIOOp_
+      -- * RegionBaseControl & MonadBaseControl
+    , RegionBaseControl
+    , unsafeControl
+    , unsafeLiftBaseWith
+    , unsafeLiftBaseOp
+    , unsafeLiftBaseOp_
 
       -- * Utilities for writing monadic instances
     , liftCallCC
@@ -74,9 +74,9 @@ module Control.Monad.Trans.Region.Internal
 --------------------------------------------------------------------------------
 
 -- from base:
-import Prelude             ( (+), (-), seq, undefined )
+import Prelude             ( (+), (-), seq, flip )
 import Control.Applicative ( Applicative, Alternative )
-import Control.Monad       ( Monad, return, when, forM_, join, liftM, MonadPlus,  )
+import Control.Monad       ( Monad, return, when, forM_, liftM, MonadPlus, (>>=) )
 import Control.Monad.Fix   ( MonadFix )
 import Control.Exception   ( bracket )
 import System.IO           ( IO )
@@ -110,7 +110,7 @@ import Control.Monad.Trans.Reader ( ReaderT(ReaderT), runReaderT, mapReaderT )
 import Control.Exception ( mask_ )
 #else
 import Control.Exception ( block )
-mask_ :: IO α -> IO α
+mask_ :: IO a -> IO a
 mask_ = block
 #endif
 
@@ -209,7 +209,7 @@ be returned from this function. (Note the similarity with the @ST@ monad.)
 Note that it is possible to run a region inside another region.
 -}
 runRegionT :: RegionBaseControl IO pr => (forall s. RegionT s pr a) -> pr a
-runRegionT r = unsafeLiftIOOp (bracket before after) thing
+runRegionT r = unsafeLiftBaseOp (bracket before after) thing
     where
       before = newIORef []
       thing hsIORef = runReaderT (unRegionT r) hsIORef
@@ -408,6 +408,22 @@ unsafeStripLocal = RegionT . unRegionT
 -- * MonadTransControl & MonadControlIO
 --------------------------------------------------------------------------------
 
+--------------------------------------------------------------------------------
+-- ** MonadBaseControl type class
+--------------------------------------------------------------------------------
+
+{-|
+Regions do not have an instance for 'MonadBaseControl' since that would break the
+safety guarantees. (Think about lifting 'forkIO' into a region!)
+
+However 'runRegionT' and other operations on regions do need the ability to lift
+control operations. This is where the 'RegionControlIO' class comes in. This
+class is identical to `RegionBaseControl` but its 'unsafeLiftBaseWith' method is
+not exported by this module. So user can't accidentally break the safety.
+
+Note that a 'RegionT' is an instance of this class. For the rest there is a
+catch-all @instance 'MonadControlIO' m => 'RegionControlIO' m@.
+-}
 class MonadBase b m => RegionBaseControl b m | m -> b where
     -- | Monadic state of @m@.
     data RegionStM m :: * -> *
@@ -444,83 +460,40 @@ class MonadBase b m => RegionBaseControl b m | m -> b where
 type RunRegionInBase m b = forall a. m a -> b (RegionStM m a)
 
 
-instance MonadBase pr => MonadBase (RegionT s pr) where
-    liftBase = RegionT . liftBase
+instance (MonadBaseControl pr pr, MonadBaseControl b (RegionT s pr), RegionBaseControl b pr) => RegionBaseControl b (RegionT s pr) where
+    newtype RegionStM (RegionT s pr) a = RegionStR {unRegionStR :: RegionStM pr a} --(IORef [RefCountedFinalizer], RegionStM pr a)}
 
-{-
-instance (RegionBaseControl b pr) => RegionBaseControl b (RegionT s pr) where
-    newtype RegionStM (RegionT s pr) = RegionStM {unRegionSt :: RegionStM pr}
+    unsafeLiftBaseWith (f{- :: (RegionT s pr -> b (StM (RegionT s pr) a)) -> b a-}) = RegionT $ ReaderT $ \state ->
+      unsafeLiftBaseWith $ \runInRegion ->
+        f $ liftM RegionStR . runInRegion . flip runReaderT state . unRegionT
+    unsafeRestoreM m = RegionT . ReaderT $ \_ -> unsafeRestoreM (unRegionStR m)
 
-    unsafeLiftBaseWith (f{- :: (RegionT s pr -> b (StM (RegionT s pr) a)) -> b a-}) =
-      RegionT $
-        liftBaseWith $ \(runReader{- :: ReaderT r m a -> b StM (ReaderT r m) a-}) ->
-          f (liftM RegionStM . runReader . unRegionT)
-
-    unsafeRestoreM = restoreM . unRegionSt
--}
-
-instance (MonadBaseControl b m) => RegionBaseControl b m where
-    newtype RegionStM m = RegionStM {unRegionStM :: StM m}
+instance (MonadBaseControl m m) => RegionBaseControl m m where
+    newtype RegionStM m a = RegionStM {unRegionStM :: StM m a}
 
     unsafeLiftBaseWith f =
       liftBaseWith $ \runM -> f (liftM RegionStM . runM)
 
-unsafeLiftIOOp = undefined
+    unsafeRestoreM = restoreM . unRegionStM
 
-{-
-{-|
-Regions do not have an instance for 'MonadControlIO' since that would break the
-safety guarantees. (Think about lifting 'forkIO' into a region!)
 
-However 'runRegionT' and other operations on regions do need the ability to lift
-control operations. This is where the 'RegionControlIO' class comes in. This
-class is identical to `MonadControlIO` but its 'unsafeLiftControlIO' method is
-not exported by this module. So user can't accidentally break the safety.
+-- | An often used composition: @control f = 'liftBaseWith' f >>= 'restoreM'@
+unsafeControl :: RegionBaseControl b m => (RunRegionInBase m b -> b (RegionStM m a)) -> m a
+unsafeControl f = unsafeLiftBaseWith f >>= unsafeRestoreM
+{-# INLINE unsafeControl #-}
 
-Note that a 'RegionT' is an instance of this class. For the rest there is a
-catch-all @instance 'MonadControlIO' m => 'RegionControlIO' m@.
--}
-class MonadIO m => RegionControlIO m where
-    {-|
-    This function behaves like `liftControlIO` but can be used on regions.
+unsafeLiftBaseOp :: RegionBaseControl b m
+           => ((a -> b (RegionStM m c)) -> b (RegionStM m d))
+           -> ((a ->        m c)  ->        m d)
+unsafeLiftBaseOp f = \g -> unsafeControl $ \runInBase -> f $ runInBase . g
+{-# INLINE unsafeLiftBaseOp #-}
 
-    Note that you can safely use this function to lift any control operator
-    other than `forkIO` into a region.
+unsafeLiftBaseOp_ :: RegionBaseControl b m
+            => (b (RegionStM m a) -> b (RegionStM m c))
+            -> (       m a  ->        m c)
+unsafeLiftBaseOp_ f = \m -> unsafeControl $ \runInBase -> f $ runInBase m
+{-# INLINE unsafeLiftBaseOp_ #-}
 
-    See the following why it's unsafe to lift `forkIO` using this function:
-    <https://github.com/basvandijk/regions/wiki/unsafeLiftControlIO>
-    -}
-    unsafeLiftControlIO :: (RunInBase m IO -> IO a) -> m a
-
-instance RegionControlIO pr => RegionControlIO (RegionT s pr) where
-    unsafeLiftControlIO f =
-        unsafeLiftControl $ \runInPr ->
-          unsafeLiftControlIO $ \runInBase ->
-            let run = liftM (join . lift) . runInBase . runInPr
-            in f run
-
-instance MonadControlIO m => RegionControlIO m where
-    unsafeLiftControlIO = liftControlIO
-
---------------------------------------------------------------------------------
-
-unsafeLiftControl :: Monad pr => (Run (RegionT s) -> pr a) -> RegionT s pr a
-unsafeLiftControl f = RegionT $ liftControl $ \runReader ->
-                        f $ liftM RegionT . runReader . unRegionT
-
-unsafeControlIO :: RegionControlIO m => (RunInBase m IO -> IO (m a)) -> m a
-unsafeControlIO = join . unsafeLiftControlIO
-
-unsafeLiftIOOp :: RegionControlIO m
-               => ((a -> IO (m b)) -> IO (m c))
-               -> ((a ->     m b)  ->     m c)
-unsafeLiftIOOp f = \g -> unsafeControlIO $ \runInIO -> f $ runInIO . g
-
-unsafeLiftIOOp_ :: RegionControlIO m
-                => (IO (m a) -> IO (m b))
-                -> (    m a ->      m b)
-unsafeLiftIOOp_ f = \m -> unsafeControlIO $ \runInIO -> f $ runInIO m
--}
 --------------------------------------------------------------------------------
 -- * Utilities for writing monadic instances
 --------------------------------------------------------------------------------
