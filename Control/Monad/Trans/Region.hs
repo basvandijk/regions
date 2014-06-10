@@ -19,7 +19,7 @@ module Control.Monad.Trans.Region
       -- * Running regions
     , runRegionT
 
-    , RegionControlIO
+    , RegionBaseControl
 
       -- * Duplication
     , Dup(dup)
