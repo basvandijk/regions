@@ -126,7 +126,7 @@ terminates, all opened resources will be closed automatically. It's a type error
 to return an opened resource from the region. The latter ensures no I/O with
 closed resources is possible.
 -}
-newtype RegionT s pr a = RegionT (RegionStT pr a)
+newtype RegionT s parent a = RegionT (RegionStT parent a)
     deriving ( Functor
              , Applicative
              , Alternative
@@ -148,7 +148,7 @@ newtype RegionT s pr a = RegionT (RegionStT pr a)
 -- the count is incremented.
 type RegionStT = ReaderT (IORef [RefCountedFinalizer])
 
-unRegionT :: RegionT s pr a -> RegionStT pr a
+unRegionT :: RegionT s parent a -> RegionStT parent a
 unRegionT (RegionT r) = r
 
 -- | A 'Finalizer' paired with its reference count which defines how many times
@@ -194,7 +194,9 @@ finalizer 2
 finalizer 1
 @
 -}
-onExit :: (MonadBase IO pr) => Finalizer -> RegionT s pr (FinalizerHandle (RegionT s pr))
+onExit :: (region ~ RegionT s parent, MonadBase IO parent)
+       => Finalizer
+       -> region (FinalizerHandle region)
 onExit finalizer = RegionT $ ReaderT $ \hsIORef -> liftBase $ do
                      refCntIORef <- newIORef 1
                      let h = RefCountedFinalizer finalizer refCntIORef
@@ -206,7 +208,7 @@ onExit finalizer = RegionT $ ReaderT $ \hsIORef -> liftBase $ do
 -- * Running regions
 --------------------------------------------------------------------------------
 
-{-| Execute a region inside its parent region @pr@.
+{-| Execute a region inside its parent region @parent@.
 
 All resources which have been opened in the given region and which haven't been
 duplicated using 'dup', will be closed on exit from this function wether by
@@ -221,7 +223,8 @@ be returned from this function. (Note the similarity with the @ST@ monad.)
 
 Note that it is possible to run a region inside another region.
 -}
-runRegionT :: RegionBaseControl IO pr => (forall s. RegionT s pr a) -> pr a
+runRegionT :: (RegionBaseControl IO parent)
+           => (forall s. RegionT s parent a) -> parent a
 runRegionT r = unsafeLiftBaseOp (bracket before after) thing
     where
       before = newIORef []
@@ -242,8 +245,8 @@ runRegionT r = unsafeLiftBaseOp (bracket before after) thing
 -- * Duplication
 --------------------------------------------------------------------------------
 
-{-| Duplicate an @h@ in the parent region. This @h@ will usually be some type of
-regional handle.
+{-| Duplicate @handle@ in the parent region. @handle@ will usually be some type of
+regional handle to a scarce resource (like a file).
 
 For example, suppose you run the following region:
 
@@ -285,18 +288,20 @@ Note that @r1hDup :: RegionalHandle (RegionT ps ppr)@
 
 Back in the parent region you can safely operate on @r1hDup@.
 -}
-class Dup h where
-    dup :: (MonadBase IO ppr)
-        => h (RegionT cs (RegionT ps ppr))
-        ->    RegionT cs (RegionT ps ppr)
-                     (h (RegionT ps ppr))
+class Dup handle where
+    dup :: ( region ~ RegionT cs parent
+           , parent ~ RegionT ps grandParent
+           , MonadBase IO grandParent
+           )
+        => handle region -- ^
+        -> region (handle parent)
 
 instance Dup FinalizerHandle where
     dup = lift . copy
 
-copy :: MonadBase IO pr
+copy :: (region ~ RegionT s parent, MonadBase IO parent)
      => FinalizerHandle r
-     -> RegionT s pr (FinalizerHandle (RegionT s pr))
+     -> region (FinalizerHandle region)
 copy (FinalizerHandle h@(RefCountedFinalizer _ refCntIORef)) =
   RegionT $ ReaderT $ \hsIORef -> liftBase $ mask_ $ do
     increment refCntIORef
@@ -318,20 +323,20 @@ increment ioRef = do refCnt' <- atomicModifyIORef ioRef $ \refCnt ->
 was opened to the region in which it is used. Take the following operation from
 the @safer-file-handles@ package as an example:
 
-@hFileSize :: (pr \`AncestorRegion\` cr, MonadIO cr) => RegionalFileHandle ioMode pr -> cr Integer@
+@hFileSize :: (parent \`AncestorRegion\` region, MonadIO region) => RegionalFileHandle ioMode parent -> region Integer@
 
 The @AncestorRegion@ class defines the parent / child relationship between regions.
 The constraint
 
 @
-    pr \`AncestorRegion\` cr
+    parent \`AncestorRegion\` region
 @
 
-is satisfied if and only if @cr@ is a sequence of zero or more \"@'RegionT' s@\"
-(with varying @s@) applied to @pr@, in other words, if @cr@ is an (improper)
-nested subregion of @pr@.
+is satisfied if and only if @region@ is a sequence of zero or more \"@'RegionT' s@\"
+(with varying @s@) applied to @parent@, in other words, if @region@ is an (improper)
+nested subregion of @parent@.
 
-The class constraint @InternalAncestorRegion pr cr@ serves two purposes. First, the
+The class constraint @InternalAncestorRegion parent region@ serves two purposes. First, the
 instances of @InternalAncestorRegion@ do the type-level recursion that implements
 the relation specified above. Second, since it is not exported, user code cannot
 add new instances of 'AncestorRegion' (as these would have to be made instances of
@@ -341,14 +346,15 @@ add new instances of 'AncestorRegion' (as these would have to be made instances 
 -- The implementation uses type-level recursion, so it is no surprise we need
 -- UndecidableInstances.
 
-class (InternalAncestorRegion pr cr) => AncestorRegion pr cr
+class    (InternalAncestorRegion parent region) => AncestorRegion parent region
+instance (InternalAncestorRegion parent region) => AncestorRegion parent region
 
-instance (InternalAncestorRegion pr cr) => AncestorRegion pr cr
-
-class InternalAncestorRegion (pr :: * -> *) (cr :: * -> *)
+class InternalAncestorRegion (parent :: * -> *) (region :: * -> *)
 
 instance InternalAncestorRegion (RegionT s m) (RegionT s m)
-instance (InternalAncestorRegion pr cr) => InternalAncestorRegion pr (RegionT s cr)
+
+instance (InternalAncestorRegion parent            region) =>
+          InternalAncestorRegion parent (RegionT s region)
 
 
 --------------------------------------------------------------------------------
@@ -379,9 +385,9 @@ An example is the @LocalPtr@ in the @alloca@ function from the
 @regional-pointers@ package:
 
 @
-alloca :: (Storable a, RegionBaseControl IO pr)
-       => (forall sl. LocalPtr a ('LocalRegion' sl s) -> RegionT ('Local' s) pr b)
-       -> RegionT s pr b
+alloca :: (Storable a, RegionBaseControl IO parent)
+       => (forall sl. LocalPtr a ('LocalRegion' sl s) -> RegionT ('Local' s) parent b)
+       -> RegionT s parent b
 @
 
 The finalisation of the @LocalPtr@ is not performed by the @regions@ library but
@@ -413,7 +419,7 @@ Convert a 'Local' region to a regular region.
 This function is unsafe because it allows you to use a 'LocalRegion'-tagged
 handle outside its 'Local' region.
 -}
-unsafeStripLocal :: RegionT (Local s) pr a -> RegionT s pr a
+unsafeStripLocal :: RegionT (Local s) parent a -> RegionT s parent a
 unsafeStripLocal = RegionT . unRegionT
 
 
@@ -472,9 +478,9 @@ class MonadBase b m => RegionBaseControl b m | m -> b where
 -- @m@ computation using 'restoreM'.
 type RunRegionInBase m b = forall a. m a -> b (RegionStM m a)
 
-instance (RegionBaseControl b pr) => RegionBaseControl b (RegionT s pr) where
-    newtype RegionStM (RegionT s pr) a =
-            RegionStR {unRegionStR :: RegionStM pr (StT RegionStT a)}
+instance (RegionBaseControl b parent) => RegionBaseControl b (RegionT s parent) where
+    newtype RegionStM (RegionT s parent) a =
+            RegionStR {unRegionStR :: RegionStM parent (StT RegionStT a)}
 
     unsafeLiftBaseWith f =
         RegionT $
@@ -492,7 +498,7 @@ instance (MonadBaseControl b m) => RegionBaseControl b m where
 
     unsafeRestoreM = restoreM . unRegionStM
 
-instance (MonadBase b pr) => MonadBase b (RegionT s pr) where
+instance (MonadBase b parent) => MonadBase b (RegionT s parent) where
     liftBase = liftBaseDefault
 
 -- | An often used composition:
@@ -519,16 +525,16 @@ unsafeLiftBaseOp_ f = \m -> unsafeControl $ \runInBase -> f $ runInBase m
 --------------------------------------------------------------------------------
 
 -- | Lift a @callCC@ operation to the new monad.
-liftCallCC :: (((a -> pr b) -> pr a) -> pr a)
-           -> (((a -> RegionT s pr b) -> RegionT s pr a) -> RegionT s pr a)
+liftCallCC :: (((a ->           parent b) ->           parent a) ->           parent a) -- ^
+           -> (((a -> RegionT s parent b) -> RegionT s parent a) -> RegionT s parent a)
 liftCallCC callCC = \f -> RegionT $ R.liftCallCC callCC $ unRegionT . f . (RegionT .)
 
 -- | Transform the computation inside a region.
-mapRegionT :: (m a -> n b)
+mapRegionT :: (          m a ->           n b) -- ^
            -> (RegionT s m a -> RegionT s n b)
 mapRegionT f = RegionT . mapReaderT f . unRegionT
 
 -- | Lift a @catchError@ operation to the new monad.
-liftCatch :: (pr a -> (e -> pr a) -> pr a)
-          -> (RegionT s pr a -> (e -> RegionT s pr a) -> RegionT s pr a)
+liftCatch :: (          parent a -> (e ->           parent a) ->           parent a) -- ^
+          -> (RegionT s parent a -> (e -> RegionT s parent a) -> RegionT s parent a)
 liftCatch f = \m h -> RegionT $ R.liftCatch f (unRegionT m) (unRegionT . h)
