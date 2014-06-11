@@ -58,6 +58,8 @@ module Control.Monad.Trans.Region.Internal
       -- * RegionBaseControl & MonadBaseControl
     , RegionBaseControl
     , unsafeLiftBaseWith
+    , unsafeRestoreM
+
     , unsafeControl
     , unsafeLiftBaseOp
     , unsafeLiftBaseOp_
