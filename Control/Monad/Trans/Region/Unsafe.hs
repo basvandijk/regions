@@ -13,9 +13,7 @@ module Control.Monad.Trans.Region.Unsafe
       unsafeStripLocal
 
       -- * RegionBaseControl
-    , RegionBaseControl
-    , unsafeLiftBaseWith
-    , unsafeRestoreM
+    , RegionBaseControl(..)
 
     , unsafeControl
     , unsafeLiftBaseOp
