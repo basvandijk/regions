@@ -74,7 +74,7 @@ module Control.Monad.Trans.Region.Internal
 --------------------------------------------------------------------------------
 
 -- from base:
-import Prelude             ( (+), (-), seq )
+import Prelude             ( (+), (-) )
 import Control.Applicative ( Applicative, Alternative )
 import Control.Monad       ( Monad, return, when, forM_, liftM, MonadPlus, (>>=) )
 import Control.Monad.Fix   ( MonadFix )
@@ -85,7 +85,7 @@ import Data.Functor        ( Functor )
 import Data.Eq             ( (==) )
 import Data.Int            ( Int )
 import Data.IORef          ( IORef, newIORef
-                           , readIORef, modifyIORef, atomicModifyIORef
+                           , readIORef, modifyIORef, atomicModifyIORef'
                            )
 #if __GLASGOW_HASKELL__ < 700
 import Prelude             ( fromInteger )
@@ -234,7 +234,7 @@ runRegionT r = unsafeLiftBaseOp (bracket before after) thing
           when (refCnt == 0) finalizer
           where
             decrement :: IORef RefCnt -> IO RefCnt
-            decrement ioRef = atomicModifyIORef ioRef $ \refCnt ->
+            decrement ioRef = atomicModifyIORef' ioRef $ \refCnt ->
                                 let refCnt' = refCnt - 1
                                 in (refCnt', refCnt')
 
@@ -302,15 +302,9 @@ copy :: (region ~ RegionT s parent, MonadBase IO parent)
      -> region (FinalizerHandle region)
 copy (FinalizerHandle h@(RefCountedFinalizer _ refCntIORef)) =
   RegionT $ ReaderT $ \hsIORef -> liftBase $ mask_ $ do
-    increment refCntIORef
+    atomicModifyIORef' refCntIORef $ \refCnt -> (refCnt + 1, ())
     modifyIORef hsIORef (h:)
     return $ FinalizerHandle h
-
-increment :: IORef RefCnt -> IO ()
-increment ioRef = do refCnt' <- atomicModifyIORef ioRef $ \refCnt ->
-                                  let refCnt' = refCnt + 1
-                                  in (refCnt', refCnt')
-                     refCnt' `seq` return ()
 
 
 --------------------------------------------------------------------------------
