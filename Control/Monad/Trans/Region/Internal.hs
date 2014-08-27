@@ -1,5 +1,4 @@
-{-# LANGUAGE CPP                        -- For portability.
-           , NoImplicitPrelude          -- I like to be fully explicit.
+{-# LANGUAGE NoImplicitPrelude          -- I like to be fully explicit.
            , GeneralizedNewtypeDeriving -- I'm lazy.
            , RankNTypes                 -- Provides the essential type-safety.
            , KindSignatures             -- To help the type-checker.
@@ -87,10 +86,6 @@ import Data.Int            ( Int )
 import Data.IORef          ( IORef, newIORef
                            , readIORef, modifyIORef, atomicModifyIORef'
                            )
-#if __GLASGOW_HASKELL__ < 700
-import Prelude             ( fromInteger )
-import Control.Monad       ( (>>=), (>>), fail )
-#endif
 
 -- from monad-control:
 import Control.Monad.Trans.Control (MonadTransControl(..), MonadBaseControl(..))
@@ -105,14 +100,7 @@ import Control.Monad.IO.Class    ( MonadIO )
 import qualified Control.Monad.Trans.Reader as R ( liftCallCC, liftCatch )
 import Control.Monad.Trans.Reader ( ReaderT(ReaderT), runReaderT, mapReaderT )
 
--- Handling the new asynchronous exceptions API in base-4.3:
-#if MIN_VERSION_base(4,3,0)
 import Control.Exception ( mask_ )
-#else
-import Control.Exception ( block )
-mask_ :: IO a -> IO a
-mask_ = block
-#endif
 
 
 --------------------------------------------------------------------------------
