@@ -195,7 +195,7 @@ finalizer 1
 onExit :: (region ~ RegionT s parent, MonadBase IO parent)
        => Finalizer
        -> region (FinalizerHandle region)
-onExit finalizer = RegionT $ ReaderT $ \hsIORef -> liftBase $ do
+onExit finalizer = RegionT $ ReaderT $ \hsIORef -> liftBase $ mask_ $ do
                      refCntIORef <- newIORef 1
                      let h = RefCountedFinalizer finalizer refCntIORef
                      modifyIORef hsIORef (h:)
