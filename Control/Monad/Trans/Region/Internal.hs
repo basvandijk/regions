@@ -222,13 +222,10 @@ runRegionT r = unsafeLiftBaseOp (bracket before after) thing
       after hsIORef = do
         hs' <- readIORef hsIORef
         forM_ hs' $ \(RefCountedFinalizer finalizer refCntIORef) -> do
-          refCnt <- decrement refCntIORef
+          refCnt <- atomicModifyIORef' refCntIORef $ \refCnt ->
+                      let refCnt' = refCnt - 1
+                      in (refCnt', refCnt')
           when (refCnt == 0) finalizer
-          where
-            decrement :: IORef RefCnt -> IO RefCnt
-            decrement ioRef = atomicModifyIORef' ioRef $ \refCnt ->
-                                let refCnt' = refCnt - 1
-                                in (refCnt', refCnt')
 
 
 --------------------------------------------------------------------------------
