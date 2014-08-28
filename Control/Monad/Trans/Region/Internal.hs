@@ -77,7 +77,7 @@ import Prelude             ( (+), (-) )
 import Control.Applicative ( Applicative, Alternative )
 import Control.Monad       ( Monad, return, when, forM_, liftM, MonadPlus, (>>=) )
 import Control.Monad.Fix   ( MonadFix )
-import Control.Exception   ( bracket )
+import Control.Exception   ( bracket, mask_ )
 import System.IO           ( IO )
 import Data.Function       ( ($), (.) )
 import Data.Functor        ( Functor )
@@ -98,9 +98,7 @@ import Control.Monad.Trans.Class ( MonadTrans, lift )
 import Control.Monad.IO.Class    ( MonadIO )
 
 import qualified Control.Monad.Trans.Reader as R ( liftCallCC, liftCatch )
-import Control.Monad.Trans.Reader ( ReaderT(ReaderT), runReaderT, mapReaderT )
-
-import Control.Exception ( mask_ )
+import           Control.Monad.Trans.Reader ( ReaderT(ReaderT), runReaderT, mapReaderT )
 
 
 --------------------------------------------------------------------------------
@@ -163,6 +161,12 @@ newtype FinalizerHandle (r :: * -> *) = FinalizerHandle RefCountedFinalizer
 {-| Register the 'Finalizer' in the region. When the region terminates all
 registered finalizers will be perfomed if they're not duplicated to a parent
 region.
+
+Please ensure that the opening of the resource and the registration of its
+'Finalizer' is done in a masked state to ensure that an asynchronous exception
+thrown after the opening of the resource doesn't prevent registration of the
+finalizer. If you follow this advise you can be sure your resources are always
+finalized appropriately regardless of exceptions.
 
 Note that finalizers are run in LIFO order (Last In First Out). So executing the following:
 
