@@ -13,11 +13,11 @@ module Control.Monad.Trans.Region.Unsafe
       unsafeStripLocal
 
       -- * RegionBaseControl
-    , RegionBaseControl(..)
+    , RegionIOControl(..)
 
     , unsafeControl
-    , unsafeLiftBaseOp
-    , unsafeLiftBaseOp_
+    , unsafeLiftIOOp
+    , unsafeLiftIOOp_
     ) where
 
 import Control.Monad.Trans.Region.Internal

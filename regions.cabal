@@ -42,8 +42,7 @@ Library
   GHC-Options: -Wall
   build-depends: base                      >= 4.7   && < 4.8
                , transformers              >= 0.2   && < 0.5
-               , transformers-base         >= 0.4   && < 0.5
-               , monad-control             >= 0.3   && < 0.4
+               , monad-control             >= 1.0   && < 1.1
   exposed-modules: Control.Monad.Trans.Region
                    Control.Monad.Trans.Region.OnExit
                    Control.Monad.Trans.Region.Unsafe
