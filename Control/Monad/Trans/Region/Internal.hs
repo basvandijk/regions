@@ -7,9 +7,7 @@
            , UndecidableInstances       -- For the AncestorRegion instances.
            , FlexibleInstances          -- ,,          ,,          ,,
            , OverlappingInstances       -- ,,          ,,          ,,
-           , TypeFamilies               -- For the RegionBaseControl class.
-           , FunctionalDependencies     -- ,,          ,,          ,,
-           , FlexibleContexts           -- For MonadBase.
+           , TypeFamilies               -- For the RegionIOControl class.
   #-}
 
 -------------------------------------------------------------------------------
